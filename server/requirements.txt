@@ -1,3 +1,6 @@
-﻿fastapi
+fastapi
 uvicorn[standard]
-requests
+httpx
+keyring
+python-multipart
+python-dotenv
