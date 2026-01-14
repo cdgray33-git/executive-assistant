@@ -1,0 +1,12 @@
+﻿venv/
+node_modules/
+.DS_Store
+config.env
+data/
+updates/
+backups/
+logs/
+exports/
+*.pkg
+*.tar.gz
+.vscode/
