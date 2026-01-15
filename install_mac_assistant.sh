@@ -311,7 +311,7 @@ setup_api_key() {
 # Executive Assistant Configuration
 APP_DIR=$INSTALL_DIR
 API_KEY="$api_key"
-ALLOWED_ORIGIN="http://127.0.0.1:8000"
+ALLOWED_ORIGIN="http://127.0.0.1:$SERVER_PORT"
 CFG
     
     success "API key generated and saved to $INSTALL_DIR/config.env"
@@ -332,9 +332,16 @@ start_ollama_service() {
         return 0
     fi
     
+    # Check if there's an existing process that didn't respond
+    if pgrep -x "ollama" > /dev/null; then
+        warning "Ollama process exists but not responding - may need manual intervention"
+        return 0
+    fi
+    
     info "Starting Ollama in background..."
     nohup ollama serve > "$INSTALL_DIR/logs/ollama.log" 2>&1 &
     local ollama_pid=$!
+    echo "$ollama_pid" > "$INSTALL_DIR/ollama.pid"
     
     # Wait for service to be ready
     local attempts=0
@@ -399,14 +406,26 @@ start_server() {
         chmod +x "$REPO_DIR/scripts/run_server.sh"
     fi
     
+    # Change to repository directory for proper module resolution
+    cd "$REPO_DIR"
+    
     # Set environment
     export PYTHONPATH="$REPO_DIR:${PYTHONPATH:-}"
     
-    # Source config if available
+    # Source config if available - safely extract only needed variables
     if [[ -f "$INSTALL_DIR/config.env" ]]; then
-        set +u  # Allow undefined variables temporarily
-        source "$INSTALL_DIR/config.env"
-        set -u
+        # Safely extract API_KEY without executing arbitrary code
+        local api_key_line=$(grep "^API_KEY=" "$INSTALL_DIR/config.env" || true)
+        if [[ -n "$api_key_line" ]]; then
+            # Remove quotes and export
+            export API_KEY=$(echo "$api_key_line" | cut -d'=' -f2- | tr -d '"')
+        fi
+        
+        # Safely extract ALLOWED_ORIGIN
+        local allowed_origin_line=$(grep "^ALLOWED_ORIGIN=" "$INSTALL_DIR/config.env" || true)
+        if [[ -n "$allowed_origin_line" ]]; then
+            export ALLOWED_ORIGIN=$(echo "$allowed_origin_line" | cut -d'=' -f2- | tr -d '"')
+        fi
     fi
     
     info "Starting server on $SERVER_HOST:$SERVER_PORT..."
@@ -538,6 +557,12 @@ main() {
     
     echo "Server logs:     tail -f $INSTALL_DIR/logs/server.log"
     echo "Stop server:     kill \$(cat $INSTALL_DIR/server.pid)"
+    if [[ -f "$INSTALL_DIR/ollama.pid" ]]; then
+        echo "Stop Ollama:     kill \$(cat $INSTALL_DIR/ollama.pid)"
+    fi
+    echo ""
+    echo "Cleanup:         To uninstall, stop services and run:"
+    echo "                 rm -rf $INSTALL_DIR $VENV_DIR"
     echo ""
 }
 
