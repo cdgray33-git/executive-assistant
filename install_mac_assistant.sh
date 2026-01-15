@@ -310,8 +310,8 @@ setup_api_key() {
     cat > "$INSTALL_DIR/config.env" <<CFG
 # Executive Assistant Configuration
 APP_DIR=$INSTALL_DIR
-API_KEY="$api_key"
-ALLOWED_ORIGIN="http://127.0.0.1:$SERVER_PORT"
+API_KEY=$api_key
+ALLOWED_ORIGIN=http://127.0.0.1:$SERVER_PORT
 CFG
     
     success "API key generated and saved to $INSTALL_DIR/config.env"
@@ -332,8 +332,8 @@ start_ollama_service() {
         return 0
     fi
     
-    # Check if there's an existing process that didn't respond
-    if pgrep -x "ollama" > /dev/null; then
+    # Check if there's an existing ollama process
+    if pgrep ollama > /dev/null; then
         warning "Ollama process exists but not responding - may need manual intervention"
         return 0
     fi
@@ -412,20 +412,22 @@ start_server() {
     # Set environment
     export PYTHONPATH="$REPO_DIR:${PYTHONPATH:-}"
     
-    # Source config if available - safely extract only needed variables
+    # Source config if available - safely extract needed variables in one pass
     if [[ -f "$INSTALL_DIR/config.env" ]]; then
-        # Safely extract API_KEY without executing arbitrary code
-        local api_key_line=$(grep "^API_KEY=" "$INSTALL_DIR/config.env" || true)
-        if [[ -n "$api_key_line" ]]; then
-            # Remove quotes and export
-            export API_KEY=$(echo "$api_key_line" | cut -d'=' -f2- | tr -d '"')
-        fi
-        
-        # Safely extract ALLOWED_ORIGIN
-        local allowed_origin_line=$(grep "^ALLOWED_ORIGIN=" "$INSTALL_DIR/config.env" || true)
-        if [[ -n "$allowed_origin_line" ]]; then
-            export ALLOWED_ORIGIN=$(echo "$allowed_origin_line" | cut -d'=' -f2- | tr -d '"')
-        fi
+        while IFS='=' read -r key value; do
+            # Skip comments and empty lines
+            [[ "$key" =~ ^[[:space:]]*# ]] || [[ -z "$key" ]] && continue
+            
+            # Export specific variables we need
+            case "$key" in
+                API_KEY)
+                    export API_KEY="$value"
+                    ;;
+                ALLOWED_ORIGIN)
+                    export ALLOWED_ORIGIN="$value"
+                    ;;
+            esac
+        done < "$INSTALL_DIR/config.env"
     fi
     
     info "Starting server on $SERVER_HOST:$SERVER_PORT..."
@@ -550,7 +552,7 @@ main() {
     
     if [[ -f "$INSTALL_DIR/config.env" ]]; then
         echo "To use the API, include this header in your requests:"
-        local api_key=$(grep "API_KEY=" "$INSTALL_DIR/config.env" | cut -d'"' -f2)
+        local api_key=$(grep "^API_KEY=" "$INSTALL_DIR/config.env" | cut -d'=' -f2)
         echo "  X-API-Key: $api_key"
         echo ""
     fi
