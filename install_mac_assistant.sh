@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 #
 # Executive Assistant - macOS Installation Script
 # 
@@ -414,17 +414,20 @@ start_server() {
     
     # Source config if available - safely extract needed variables in one pass
     if [[ -f "$INSTALL_DIR/config.env" ]]; then
-        while IFS='=' read -r key value; do
+        while IFS='=' read -r key value || [[ -n "$key" ]]; do
             # Skip comments and empty lines
             [[ "$key" =~ ^[[:space:]]*# ]] || [[ -z "$key" ]] && continue
+            
+            # Skip lines without '=' delimiter
+            [[ -z "$value" && ! "$key" =~ = ]] && continue
             
             # Export specific variables we need
             case "$key" in
                 API_KEY)
-                    export API_KEY="$value"
+                    export API_KEY="${value:-}"
                     ;;
                 ALLOWED_ORIGIN)
-                    export ALLOWED_ORIGIN="$value"
+                    export ALLOWED_ORIGIN="${value:-}"
                     ;;
             esac
         done < "$INSTALL_DIR/config.env"
@@ -552,8 +555,10 @@ main() {
     
     if [[ -f "$INSTALL_DIR/config.env" ]]; then
         echo "To use the API, include this header in your requests:"
-        local api_key=$(grep "^API_KEY=" "$INSTALL_DIR/config.env" | cut -d'=' -f2)
-        echo "  X-API-Key: $api_key"
+        local api_key=$(grep "^API_KEY=" "$INSTALL_DIR/config.env" | cut -d'=' -f2-)
+        if [[ -n "$api_key" ]]; then
+            echo "  X-API-Key: $api_key"
+        fi
         echo ""
     fi
     
@@ -564,7 +569,7 @@ main() {
     fi
     echo ""
     echo "Cleanup:         To uninstall, stop services and run:"
-    echo "                 rm -rf $INSTALL_DIR $VENV_DIR"
+    echo "                 rm -rf $INSTALL_DIR $VENV_DIR $REPO_DIR"
     echo ""
 }
 
