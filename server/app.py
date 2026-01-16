@@ -30,11 +30,11 @@ except ImportError:
     from server.security import require_api_key
     from server.llm.ollama_adapter import OllamaAdapter
 
-# Import assistant_functions - try relative import first, then absolute
+# Import assistant_functions - try local import first (when running from server dir), then absolute
 try:
-    from server import assistant_functions
-except ImportError:
     import assistant_functions
+except ImportError:
+    from server import assistant_functions
 
 logger = logging.getLogger("executive_assistant")
 logging.basicConfig(level=logging.INFO)
