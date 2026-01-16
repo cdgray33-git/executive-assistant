@@ -8,6 +8,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
+from reportlab.lib.colors import HexColor
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from typing import List
@@ -58,8 +59,7 @@ def _create_briefing_docx(title: str, summary: str, key_points: List[str],
     # Action Items section
     doc.add_heading("Action Items", level=1)
     for i, item in enumerate(action_items, 1):
-        para = doc.add_paragraph(style='List Bullet')
-        para.text = item
+        doc.add_paragraph(item, style='List Bullet')
     
     doc.save(output_path)
 
@@ -76,7 +76,7 @@ def _create_briefing_pdf(title: str, summary: str, key_points: List[str],
         'CustomTitle',
         parent=styles['Heading1'],
         fontSize=24,
-        textColor=RGBColor(0, 0, 0),
+        textColor=HexColor('#000000'),
         spaceAfter=30,
         alignment=TA_CENTER
     )
@@ -85,7 +85,7 @@ def _create_briefing_pdf(title: str, summary: str, key_points: List[str],
         'CustomHeading',
         parent=styles['Heading2'],
         fontSize=16,
-        textColor=RGBColor(0, 0, 0),
+        textColor=HexColor('#000000'),
         spaceAfter=12,
         spaceBefore=12
     )

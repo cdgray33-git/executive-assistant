@@ -136,12 +136,13 @@ def _is_spam(msg: email.message.Message) -> bool:
     spam_score = msg.get("X-Spam-Score", "")
     if spam_score:
         try:
-            score_parts = spam_score.split()
-            if score_parts:
-                score_val = float(score_parts[0])
+            # Extract numeric value using regex to handle various formats like "5.2" or "score=5.2"
+            match = re.search(r'[-+]?\d*\.?\d+', spam_score)
+            if match:
+                score_val = abs(float(match.group()))
                 if score_val > 5:
                     return True
-        except (ValueError, IndexError):
+        except (ValueError, AttributeError):
             pass  # Invalid spam score format, continue with other checks
     
     # Check spam status

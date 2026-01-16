@@ -15,9 +15,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 # local helpers
-from server.security import require_api_key
-from server.llm.ollama_adapter import OllamaAdapter
-import assistant_functions
+try:
+    # When run from server directory or as module
+    from .security import require_api_key
+    from .llm.ollama_adapter import OllamaAdapter
+except ImportError:
+    # When server is on path
+    from server.security import require_api_key
+    from server.llm.ollama_adapter import OllamaAdapter
+
+# Import assistant_functions - try relative import first, then absolute
+try:
+    import assistant_functions
+except ImportError:
+    from . import assistant_functions
 
 logger = logging.getLogger("executive_assistant")
 logging.basicConfig(level=logging.INFO)
