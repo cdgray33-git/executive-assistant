@@ -20,14 +20,19 @@ from fastapi import FastAPI, Request, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-# local helpers
+# local helpers - import each separately to handle different path scenarios
 try:
-    # When run from server directory or as module
+    # When run from server directory
     from security import require_api_key
-    from llm.ollama_adapter import OllamaAdapter
 except ImportError:
     # When server is on path
     from server.security import require_api_key
+
+try:
+    # When run from server directory
+    from llm.ollama_adapter import OllamaAdapter
+except ImportError:
+    # When server is on path
     from server.llm.ollama_adapter import OllamaAdapter
 
 # Import assistant_functions - try local import first (when running from server dir), then absolute

@@ -686,7 +686,11 @@ async def generate_presentation(title, slides: List[Dict], output_filename=None,
     """
     def _sync():
         try:
-            from server.utils.pptx_generator import generate_presentation as gen_ppt
+            # Try local import first (when running from server directory)
+            try:
+                from utils.pptx_generator import generate_presentation as gen_ppt
+            except ImportError:
+                from server.utils.pptx_generator import generate_presentation as gen_ppt
             
             fname = output_filename if output_filename else f"presentation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pptx"
             
@@ -712,7 +716,11 @@ async def create_briefing(title, summary, key_points: List[str], action_items: L
     """
     def _sync():
         try:
-            from server.utils.document_generator import create_briefing_doc
+            # Try local import first (when running from server directory)
+            try:
+                from utils.document_generator import create_briefing_doc
+            except ImportError:
+                from server.utils.document_generator import create_briefing_doc
             
             filename = f"briefing_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{format}"
             
@@ -743,7 +751,11 @@ async def write_document(doc_type, title, content, format="docx", **kwargs):
     """
     def _sync():
         try:
-            from server.utils.document_generator import create_document
+            # Try local import first (when running from server directory)
+            try:
+                from utils.document_generator import create_document
+            except ImportError:
+                from server.utils.document_generator import create_document
             
             filename = f"{doc_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{format}"
             
