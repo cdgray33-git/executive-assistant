@@ -890,7 +890,7 @@ else
     log "FORCE_YES set; skipping interactive prompts."
   else
     log "Non-interactive mode detected (stdin not a terminal)."
-    log "To configure email accounts, see: ${DOCS_DIR}/EMAIL_QUICKSTART.md"
+    log "To configure email accounts, see: ${REPO_DIR}/EMAIL_QUICKSTART.md"
     log "Or run this installer again locally: cd ~/executive-assistant && ./install_executive_assistant_mac.sh"
   fi
 fi
