@@ -112,21 +112,97 @@ async def api_models():
 @app.post("/api/function_call", dependencies=[Depends(verify_key)])
 async def function_call(payload: Dict[str, Any]):
     """
-    Minimal function-call endpoint.
-    The real project may route this to server/assistant_functions or a more elaborate router.
-    This implementation validates the presence of a function name and echoes arguments.
+    Function-call endpoint that executes assistant functions.
+    Routes calls to assistant_functions.execute_function().
     """
     try:
         name = payload.get("name") or payload.get("function_name")
         args = payload.get("arguments", {})
         if not name:
             return {"status": "error", "error": "function name required"}
-        # For now, echo back the call; integrate with your existing router as needed.
+        
         logger.info("Function call: %s %s", name, args)
-        return {"status": "success", "function": name, "arguments": args}
+        
+        # Execute the function through assistant_functions module
+        result = await assistant_functions.execute_function(name, args)
+        return {"status": "success", "result": result}
     except Exception as e:
         logger.exception("function_call error")
         return {"status": "error", "error": str(e)}
+
+
+@app.get("/api/functions", dependencies=[Depends(verify_key)])
+async def list_functions():
+    """List available assistant functions."""
+    try:
+        return {"functions": assistant_functions.get_function_info()}
+    except Exception as e:
+        logger.exception("list_functions error")
+        return {"status": "error", "error": str(e)}
+
+
+@app.post("/api/chat")
+async def chat(request: Request):
+    """
+    Simple chat endpoint that processes natural language requests.
+    For demo purposes, this provides basic keyword matching to email functions.
+    """
+    try:
+        data = await request.json()
+        prompt = data.get("prompt", "").lower()
+        
+        if not prompt:
+            return {"response": "Please provide a message."}
+        
+        # Check if user is asking about emails
+        if any(keyword in prompt for keyword in ["email", "mail", "inbox", "message"]):
+            # Check if we have any email accounts configured
+            accounts = await assistant_functions.list_email_accounts()
+            
+            if accounts.get("count", 0) == 0:
+                return {
+                    "response": "No email accounts are configured. Please add an email account first using the web interface or by calling the add_email_account function."
+                }
+            
+            # Get the first account ID
+            account_id = accounts.get("accounts", [])[0] if accounts.get("accounts") else None
+            
+            if not account_id:
+                return {"response": "No email account found."}
+            
+            # Fetch unread emails
+            if any(word in prompt for word in ["last", "recent", "unread", "show", "get", "fetch"]):
+                max_msgs = 3
+                if "5" in prompt or "five" in prompt:
+                    max_msgs = 5
+                elif "10" in prompt or "ten" in prompt:
+                    max_msgs = 10
+                
+                result = await assistant_functions.fetch_unread_emails(account_id, max_messages=max_msgs)
+                
+                if "error" in result:
+                    return {"response": f"Error fetching emails: {result['error']}"}
+                
+                messages = result.get("messages", [])
+                if not messages:
+                    return {"response": "No unread emails found."}
+                
+                response = f"You have {len(messages)} unread email(s):\n\n"
+                for i, msg in enumerate(messages, 1):
+                    response += f"{i}. From: {msg['from']}\n"
+                    response += f"   Subject: {msg['subject']}\n"
+                    response += f"   Preview: {msg['preview'][:100]}...\n\n"
+                
+                return {"response": response}
+        
+        # Generic response for non-email queries
+        return {
+            "response": "I can help you with email management, document generation, and more. Try asking:\n- 'Show me my last 3 emails'\n- 'Fetch my unread emails'\n\nOr use the API endpoints directly for document generation and other features."
+        }
+        
+    except Exception as e:
+        logger.exception("chat error")
+        return {"response": f"Error: {str(e)}"}
 
 
 # Email management endpoints
