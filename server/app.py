@@ -7,8 +7,14 @@ FastAPI application adapted for native macOS Ollama usage.
 - Email management and document generation endpoints
 """
 import os
+import sys
 import logging
 from typing import Optional, Any, Dict, List
+
+# Add parent directory to path to allow imports when running from server directory
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
 
 from fastapi import FastAPI, Request, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,8 +23,8 @@ from pydantic import BaseModel
 # local helpers
 try:
     # When run from server directory or as module
-    from .security import require_api_key
-    from .llm.ollama_adapter import OllamaAdapter
+    from security import require_api_key
+    from llm.ollama_adapter import OllamaAdapter
 except ImportError:
     # When server is on path
     from server.security import require_api_key
@@ -26,9 +32,9 @@ except ImportError:
 
 # Import assistant_functions - try relative import first, then absolute
 try:
-    import assistant_functions
+    from server import assistant_functions
 except ImportError:
-    from . import assistant_functions
+    import assistant_functions
 
 logger = logging.getLogger("executive_assistant")
 logging.basicConfig(level=logging.INFO)
