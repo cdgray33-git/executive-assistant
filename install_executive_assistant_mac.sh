@@ -72,8 +72,10 @@ wait_for_http() {
 }
 
 ensure_dirs() {
-  mkdir -p "$DATA_DIR/notes" "$DATA_DIR/calendar" "$DATA_DIR/contacts" "$LOG_DIR" "$SERVER_DIR" "$STATIC_DIR" "$REPO_DIR/scripts"
-  log "Ensured data, server, static and log directories exist"
+  mkdir -p "$DATA_DIR/notes" "$DATA_DIR/calendar" "$DATA_DIR/contacts" \
+           "$DATA_DIR/outputs/presentations" "$DATA_DIR/outputs/documents" "$DATA_DIR/outputs/pdfs" \
+           "$LOG_DIR" "$SERVER_DIR" "$STATIC_DIR" "$REPO_DIR/scripts"
+  log "Ensured data, output, server, static and log directories exist"
 }
 
 # ----------------- Begin -----------------
@@ -271,6 +273,9 @@ httpx
 python-dateutil
 pydantic
 keyring
+python-pptx
+python-docx
+reportlab
 REQ
 
 # server: app.py (serves static UI and API endpoints)

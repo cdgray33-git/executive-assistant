@@ -1,0 +1,810 @@
+"""
+assistant_functions.py
+Comprehensive assistant functions including email management, document generation,
+and presentation automation for executive productivity tasks.
+"""
+import os
+import json
+import random
+import logging
+import email
+import imaplib
+import smtplib
+import asyncio
+import re
+from datetime import datetime, timedelta
+from email.message import EmailMessage
+from email.header import decode_header
+from typing import Dict, List, Optional, Any
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("assistant_functions")
+
+# Data directories
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
+NOTES_DIR = os.path.join(ROOT, "notes")
+CALENDAR_FILE = os.path.join(ROOT, "calendar", "events.json")
+CONTACTS_FILE = os.path.join(ROOT, "contacts", "contacts.json")
+EMAIL_ACCOUNTS_FILE = os.path.join(ROOT, "email_accounts.json")
+OUTPUT_DIR = os.path.join(ROOT, "outputs")
+PPTX_OUTPUT_DIR = os.path.join(OUTPUT_DIR, "presentations")
+DOCX_OUTPUT_DIR = os.path.join(OUTPUT_DIR, "documents")
+PDF_OUTPUT_DIR = os.path.join(OUTPUT_DIR, "pdfs")
+
+# Ensure directories exist
+for directory in [NOTES_DIR, os.path.dirname(CALENDAR_FILE), os.path.dirname(CONTACTS_FILE),
+                  OUTPUT_DIR, PPTX_OUTPUT_DIR, DOCX_OUTPUT_DIR, PDF_OUTPUT_DIR]:
+    os.makedirs(directory, exist_ok=True)
+
+# Initialize files if missing
+if not os.path.exists(CALENDAR_FILE):
+    with open(CALENDAR_FILE, "w") as f:
+        json.dump([], f)
+if not os.path.exists(CONTACTS_FILE):
+    with open(CONTACTS_FILE, "w") as f:
+        json.dump([], f)
+if not os.path.exists(EMAIL_ACCOUNTS_FILE):
+    with open(EMAIL_ACCOUNTS_FILE, "w") as f:
+        json.dump({}, f)
+
+# Function registry metadata
+FUNCTION_REGISTRY = {
+    "test_connection": {"description": "Test connection", "parameters": ["query"]},
+    "take_notes": {"description": "Save a note", "parameters": ["content", "title"]},
+    "get_notes": {"description": "Get a note or list", "parameters": ["title"]},
+    "add_calendar_event": {"description": "Add event", "parameters": ["title", "date", "time", "description"]},
+    "get_calendar": {"description": "Get calendar events", "parameters": ["days"]},
+    "add_contact": {"description": "Add contact", "parameters": ["name", "email", "phone", "notes"]},
+    "search_contacts": {"description": "Search contacts", "parameters": ["query"]},
+    "fetch_unread_emails": {"description": "Fetch unread emails", "parameters": ["account_id", "max_messages"]},
+    "mark_email_read": {"description": "Mark email read", "parameters": ["account_id", "uid"]},
+    "send_email": {"description": "Send an email", "parameters": ["account_id", "to", "subject", "body"]},
+    "bulk_delete_emails": {"description": "Bulk delete emails by criteria", "parameters": ["account_id", "criteria", "dry_run"]},
+    "categorize_emails": {"description": "Auto-categorize emails into folders", "parameters": ["account_id", "max_messages", "dry_run"]},
+    "detect_spam": {"description": "Detect and optionally delete spam", "parameters": ["account_id", "max_messages", "delete", "dry_run"]},
+    "cleanup_inbox": {"description": "Automated inbox cleanup workflow", "parameters": ["account_id", "dry_run"]},
+    "generate_presentation": {"description": "Generate PowerPoint presentation", "parameters": ["title", "slides", "output_filename"]},
+    "create_briefing": {"description": "Create briefing document", "parameters": ["title", "summary", "key_points", "action_items", "format"]},
+    "write_document": {"description": "Create formatted document", "parameters": ["doc_type", "title", "content", "format"]},
+    "summarize_text": {"description": "Summarize text", "parameters": ["text"]}
+}
+
+
+def _load_email_accounts():
+    """Load email accounts from JSON file."""
+    try:
+        with open(EMAIL_ACCOUNTS_FILE, "r") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_email_accounts(accounts):
+    """Save email accounts to JSON file."""
+    with open(EMAIL_ACCOUNTS_FILE, "w") as f:
+        json.dump(accounts, f, indent=2)
+    os.chmod(EMAIL_ACCOUNTS_FILE, 0o600)
+
+
+def _decode_header(h):
+    """Decode email header."""
+    parts = decode_header(h)
+    out = ""
+    for text, enc in parts:
+        if isinstance(text, bytes):
+            try:
+                out += text.decode(enc or "utf-8", errors="replace")
+            except Exception:
+                out += text.decode("utf-8", errors="replace")
+        else:
+            out += text
+    return out
+
+
+def _connect_imap(account_info: Dict) -> imaplib.IMAP4_SSL:
+    """Connect to IMAP server."""
+    host = account_info["imap_host"]
+    port = int(account_info.get("imap_port", 993))
+    use_ssl = account_info.get("use_ssl", True)
+    username = account_info["username"]
+    password = account_info["password"]
+    
+    if use_ssl:
+        M = imaplib.IMAP4_SSL(host, port)
+    else:
+        M = imaplib.IMAP4(host, port)
+    M.login(username, password)
+    return M
+
+
+def _is_spam(msg: email.message.Message) -> bool:
+    """
+    Detect spam based on headers, content heuristics, and patterns.
+    """
+    subject = _decode_header(msg.get("Subject", "")).lower()
+    from_addr = _decode_header(msg.get("From", "")).lower()
+    
+    # Common spam patterns
+    spam_keywords = [
+        "viagra", "cialis", "lottery", "winner", "prize", "claim now",
+        "act now", "limited time", "click here", "make money fast",
+        "nigerian prince", "inheritance", "congratulations you won",
+        "free money", "work from home", "miracle cure"
+    ]
+    
+    # Check spam score in headers
+    spam_score = msg.get("X-Spam-Score", "")
+    if spam_score and float(spam_score.split()[0] if spam_score.split() else 0) > 5:
+        return True
+    
+    # Check spam status
+    spam_status = msg.get("X-Spam-Status", "").lower()
+    if "yes" in spam_status:
+        return True
+    
+    # Check subject and from for spam keywords
+    for keyword in spam_keywords:
+        if keyword in subject or keyword in from_addr:
+            return True
+    
+    # Check for suspicious patterns
+    if re.search(r'\d{10,}', subject):  # Long number sequences
+        return True
+    
+    if subject.count('!') > 3:  # Excessive exclamation marks
+        return True
+    
+    return False
+
+
+def _categorize_email(msg: email.message.Message) -> str:
+    """
+    Categorize email based on content analysis.
+    Returns folder name: "Personal", "Work", "Promotions", "Social", "Spam"
+    """
+    if _is_spam(msg):
+        return "Spam"
+    
+    subject = _decode_header(msg.get("Subject", "")).lower()
+    from_addr = _decode_header(msg.get("From", "")).lower()
+    
+    # Promotions indicators
+    promo_keywords = ["sale", "discount", "offer", "deal", "coupon", "promotion", "subscribe", "unsubscribe"]
+    if any(kw in subject or kw in from_addr for kw in promo_keywords):
+        return "Promotions"
+    
+    # Social media indicators
+    social_domains = ["facebook", "twitter", "linkedin", "instagram", "pinterest"]
+    if any(domain in from_addr for domain in social_domains):
+        return "Social"
+    
+    # Work indicators (can be customized based on user's domain)
+    work_keywords = ["meeting", "project", "deadline", "report", "invoice", "contract"]
+    if any(kw in subject for kw in work_keywords):
+        return "Work"
+    
+    # Default to Personal
+    return "Personal"
+
+
+# Basic functions
+async def test_connection(query="test", **kwargs):
+    """Test connection to assistant."""
+    return {
+        "message": f"Assistant reachable. Query: {query}",
+        "timestamp": datetime.now().isoformat(),
+        "functions": list(FUNCTION_REGISTRY.keys())
+    }
+
+
+async def take_notes(content, title=None, **kwargs):
+    """Save a note to file."""
+    if not title:
+        title = f"note_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    filename = "".join(c if c.isalnum() or c in [' ', '_', '-'] else '_' for c in title).strip().replace(' ', '_') + ".txt"
+    path = os.path.join(NOTES_DIR, filename)
+    with open(path, "w") as f:
+        f.write(content)
+    return {"message": "note saved", "filename": filename, "timestamp": datetime.now().isoformat()}
+
+
+async def get_notes(title=None, **kwargs):
+    """Get a specific note or list all notes."""
+    if title:
+        filename = "".join(c if c.isalnum() or c in [' ', '_', '-'] else '_' for c in title).strip().replace(' ', '_') + ".txt"
+        path = os.path.join(NOTES_DIR, filename)
+        try:
+            with open(path) as f:
+                return {"title": title, "content": f.read(), "timestamp": datetime.now().isoformat()}
+        except FileNotFoundError:
+            return {"error": "not found", "available": await list_notes()}
+    return await list_notes()
+
+
+async def list_notes(**kwargs):
+    """List all available notes."""
+    notes = []
+    for fn in os.listdir(NOTES_DIR):
+        if fn.endswith(".txt"):
+            notes.append({"title": fn.replace('_', ' ').replace('.txt', ''), "filename": fn})
+    return {"notes": notes, "count": len(notes)}
+
+
+# Calendar functions
+async def add_calendar_event(title, date, time=None, description=None, **kwargs):
+    """Add a calendar event."""
+    with open(CALENDAR_FILE) as f:
+        events = json.load(f)
+    event = {
+        "id": str(random.randint(10000, 99999)),
+        "title": title,
+        "date": date,
+        "time": time,
+        "description": description,
+        "created_at": datetime.now().isoformat()
+    }
+    events.append(event)
+    with open(CALENDAR_FILE, "w") as f:
+        json.dump(events, f, indent=2)
+    return {"message": "event added", "event": event}
+
+
+async def get_calendar(days=7, **kwargs):
+    """Get calendar events for next N days."""
+    with open(CALENDAR_FILE) as f:
+        all_events = json.load(f)
+    today = datetime.now().date()
+    end = today + timedelta(days=int(days))
+    events = []
+    for ev in all_events:
+        try:
+            d = datetime.strptime(ev["date"], "%Y-%m-%d").date()
+            if today <= d <= end:
+                events.append(ev)
+        except Exception:
+            pass
+    return {"events": events, "count": len(events)}
+
+
+# Contacts functions
+async def add_contact(name, email=None, phone=None, notes=None, **kwargs):
+    """Add a contact."""
+    with open(CONTACTS_FILE) as f:
+        contacts = json.load(f)
+    contact = {
+        "id": str(random.randint(10000, 99999)),
+        "name": name,
+        "email": email,
+        "phone": phone,
+        "notes": notes,
+        "created_at": datetime.now().isoformat()
+    }
+    contacts.append(contact)
+    with open(CONTACTS_FILE, "w") as f:
+        json.dump(contacts, f, indent=2)
+    return {"message": "contact added", "contact": contact}
+
+
+async def search_contacts(query, **kwargs):
+    """Search contacts."""
+    with open(CONTACTS_FILE) as f:
+        contacts = json.load(f)
+    q = query.lower()
+    matches = [c for c in contacts if q in (c.get("name", "") + c.get("email", "") + c.get("phone", "") + c.get("notes", "")).lower()]
+    return {"contacts": matches, "count": len(matches)}
+
+
+# Email account management
+async def add_email_account(account_id, imap_host, imap_port, smtp_host, smtp_port, username, password, use_ssl=True, **kwargs):
+    """Add an email account."""
+    def _sync():
+        accounts = _load_email_accounts()
+        accounts[account_id] = {
+            "imap_host": imap_host,
+            "imap_port": int(imap_port),
+            "smtp_host": smtp_host,
+            "smtp_port": int(smtp_port),
+            "username": username,
+            "password": password,
+            "use_ssl": bool(use_ssl)
+        }
+        _save_email_accounts(accounts)
+        return {"message": f"Saved account {account_id}"}
+    return await asyncio.to_thread(_sync)
+
+
+async def list_email_accounts(**kwargs):
+    """List configured email accounts."""
+    accounts = _load_email_accounts()
+    return {"accounts": list(accounts.keys()), "count": len(accounts)}
+
+
+# Enhanced email functions
+async def fetch_unread_emails(account_id, max_messages=10, **kwargs):
+    """Fetch unread emails from account."""
+    def _sync():
+        accounts = _load_email_accounts()
+        acct = accounts.get(account_id)
+        if not acct:
+            return {"error": f"Account {account_id} not found", "available": list(accounts.keys())}
+        
+        try:
+            M = _connect_imap(acct)
+            M.select("INBOX")
+            typ, data = M.search(None, "UNSEEN")
+            uids = data[0].split() if data and data[0] else []
+            uids = uids[-int(max_messages):]
+            results = []
+            
+            for uid in reversed(uids):
+                typ, msg_data = M.fetch(uid, "(RFC822)")
+                raw = msg_data[0][1]
+                msg = email.message_from_bytes(raw)
+                subject = _decode_header(msg.get("Subject", ""))
+                frm = _decode_header(msg.get("From", ""))
+                date = msg.get("Date", "")
+                body = ""
+                
+                if msg.is_multipart():
+                    for part in msg.walk():
+                        ctype = part.get_content_type()
+                        disp = str(part.get("Content-Disposition"))
+                        if ctype == "text/plain" and "attachment" not in disp:
+                            try:
+                                body = part.get_payload(decode=True).decode(errors="replace")
+                            except Exception:
+                                body = str(part.get_payload())
+                            break
+                else:
+                    try:
+                        body = msg.get_payload(decode=True).decode(errors="replace")
+                    except Exception:
+                        body = str(msg.get_payload())
+                
+                preview = " ".join(body.strip().splitlines())[:400] + ("..." if len(body) > 400 else "")
+                results.append({
+                    "uid": uid.decode() if isinstance(uid, bytes) else str(uid),
+                    "from": frm,
+                    "subject": subject,
+                    "date": date,
+                    "preview": preview
+                })
+            
+            M.logout()
+            return {"messages": results, "count": len(results)}
+        except imaplib.IMAP4.error as e:
+            return {"error": f"IMAP error: {str(e)}"}
+        except Exception as e:
+            return {"error": f"Unexpected error: {str(e)}"}
+    
+    return await asyncio.to_thread(_sync)
+
+
+async def mark_email_read(account_id, uid, **kwargs):
+    """Mark an email as read."""
+    def _sync():
+        accounts = _load_email_accounts()
+        acct = accounts.get(account_id)
+        if not acct:
+            return {"error": f"Account {account_id} not found"}
+        
+        try:
+            M = _connect_imap(acct)
+            M.select("INBOX")
+            M.store(uid, '+FLAGS', '\\Seen')
+            M.logout()
+            return {"message": f"Marked {uid} as read"}
+        except Exception as e:
+            return {"error": str(e)}
+    
+    return await asyncio.to_thread(_sync)
+
+
+async def send_email(account_id, to, subject, body, **kwargs):
+    """Send an email."""
+    def _sync():
+        accounts = _load_email_accounts()
+        acct = accounts.get(account_id)
+        if not acct:
+            return {"error": f"Account {account_id} not found"}
+        
+        smtp_host = acct["smtp_host"]
+        smtp_port = int(acct["smtp_port"])
+        username = acct["username"]
+        password = acct["password"]
+        use_ssl = acct.get("use_ssl", True)
+        
+        try:
+            msg = EmailMessage()
+            msg["From"] = username
+            msg["To"] = to
+            msg["Subject"] = subject
+            msg.set_content(body)
+            
+            if smtp_port == 465 or use_ssl:
+                server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=30)
+            else:
+                server = smtplib.SMTP(smtp_host, smtp_port, timeout=30)
+                server.starttls()
+            
+            server.login(username, password)
+            server.send_message(msg)
+            server.quit()
+            return {"message": "Email sent"}
+        except Exception as e:
+            return {"error": str(e)}
+    
+    return await asyncio.to_thread(_sync)
+
+
+async def bulk_delete_emails(account_id, criteria: Dict, dry_run=True, **kwargs):
+    """
+    Bulk delete emails based on criteria.
+    criteria = {
+        "older_than_days": int (e.g., 365 for 1 year),
+        "folder": str (e.g., "Promotions", "INBOX"),
+        "from_contains": str (optional),
+        "subject_contains": str (optional)
+    }
+    """
+    def _sync():
+        accounts = _load_email_accounts()
+        acct = accounts.get(account_id)
+        if not acct:
+            return {"error": f"Account {account_id} not found"}
+        
+        try:
+            M = _connect_imap(acct)
+            folder = criteria.get("folder", "INBOX")
+            M.select(folder)
+            
+            # Build search criteria
+            search_parts = []
+            
+            if "older_than_days" in criteria:
+                cutoff_date = datetime.now() - timedelta(days=int(criteria["older_than_days"]))
+                date_str = cutoff_date.strftime("%d-%b-%Y")
+                search_parts.append(f'BEFORE {date_str}')
+            
+            if "from_contains" in criteria:
+                search_parts.append(f'FROM "{criteria["from_contains"]}"')
+            
+            if "subject_contains" in criteria:
+                search_parts.append(f'SUBJECT "{criteria["subject_contains"]}"')
+            
+            # Default to ALL if no criteria
+            search_query = " ".join(search_parts) if search_parts else "ALL"
+            
+            # Process in batches to avoid timeout
+            batch_size = 100
+            typ, data = M.search(None, search_query)
+            uids = data[0].split() if data and data[0] else []
+            
+            total_count = len(uids)
+            deleted_count = 0
+            
+            if dry_run:
+                M.logout()
+                return {
+                    "message": "Dry run - no emails deleted",
+                    "would_delete": total_count,
+                    "criteria": criteria
+                }
+            
+            # Delete in batches
+            for i in range(0, len(uids), batch_size):
+                batch = uids[i:i + batch_size]
+                for uid in batch:
+                    M.store(uid, '+FLAGS', '\\Deleted')
+                    deleted_count += 1
+                M.expunge()  # Permanently remove deleted messages
+            
+            M.logout()
+            return {
+                "message": f"Deleted {deleted_count} emails",
+                "deleted_count": deleted_count,
+                "criteria": criteria
+            }
+        except Exception as e:
+            return {"error": str(e)}
+    
+    return await asyncio.to_thread(_sync)
+
+
+async def categorize_emails(account_id, max_messages=100, dry_run=True, **kwargs):
+    """
+    Auto-categorize emails into folders.
+    Creates folders if they don't exist.
+    """
+    def _sync():
+        accounts = _load_email_accounts()
+        acct = accounts.get(account_id)
+        if not acct:
+            return {"error": f"Account {account_id} not found"}
+        
+        try:
+            M = _connect_imap(acct)
+            M.select("INBOX")
+            
+            # Get messages to categorize
+            typ, data = M.search(None, "ALL")
+            uids = data[0].split() if data and data[0] else []
+            uids = uids[-int(max_messages):]
+            
+            categorization_results = {}
+            
+            for uid in uids:
+                typ, msg_data = M.fetch(uid, "(RFC822)")
+                raw = msg_data[0][1]
+                msg = email.message_from_bytes(raw)
+                
+                category = _categorize_email(msg)
+                
+                if category not in categorization_results:
+                    categorization_results[category] = 0
+                categorization_results[category] += 1
+                
+                if not dry_run:
+                    # Ensure folder exists
+                    folder_name = category
+                    try:
+                        M.create(folder_name)
+                    except:
+                        pass  # Folder might already exist
+                    
+                    # Copy message to folder and delete from INBOX
+                    try:
+                        M.copy(uid, folder_name)
+                        M.store(uid, '+FLAGS', '\\Deleted')
+                    except Exception as e:
+                        logger.warning(f"Failed to move message {uid}: {e}")
+            
+            if not dry_run:
+                M.expunge()
+            
+            M.logout()
+            
+            return {
+                "message": "Categorization complete" if not dry_run else "Dry run - no emails moved",
+                "categorization": categorization_results,
+                "total_processed": len(uids),
+                "dry_run": dry_run
+            }
+        except Exception as e:
+            return {"error": str(e)}
+    
+    return await asyncio.to_thread(_sync)
+
+
+async def detect_spam(account_id, max_messages=100, delete=False, dry_run=True, **kwargs):
+    """
+    Detect spam emails and optionally delete them.
+    """
+    def _sync():
+        accounts = _load_email_accounts()
+        acct = accounts.get(account_id)
+        if not acct:
+            return {"error": f"Account {account_id} not found"}
+        
+        try:
+            M = _connect_imap(acct)
+            M.select("INBOX")
+            
+            typ, data = M.search(None, "ALL")
+            uids = data[0].split() if data and data[0] else []
+            uids = uids[-int(max_messages):]
+            
+            spam_messages = []
+            
+            for uid in uids:
+                typ, msg_data = M.fetch(uid, "(RFC822)")
+                raw = msg_data[0][1]
+                msg = email.message_from_bytes(raw)
+                
+                if _is_spam(msg):
+                    subject = _decode_header(msg.get("Subject", ""))
+                    frm = _decode_header(msg.get("From", ""))
+                    spam_messages.append({
+                        "uid": uid.decode() if isinstance(uid, bytes) else str(uid),
+                        "from": frm,
+                        "subject": subject
+                    })
+                    
+                    if delete and not dry_run:
+                        M.store(uid, '+FLAGS', '\\Deleted')
+            
+            if delete and not dry_run:
+                M.expunge()
+            
+            M.logout()
+            
+            return {
+                "message": f"{'Would delete' if dry_run else 'Deleted'} {len(spam_messages)} spam messages" if delete else f"Found {len(spam_messages)} spam messages",
+                "spam_count": len(spam_messages),
+                "spam_messages": spam_messages[:10],  # Return first 10 for preview
+                "dry_run": dry_run
+            }
+        except Exception as e:
+            return {"error": str(e)}
+    
+    return await asyncio.to_thread(_sync)
+
+
+async def cleanup_inbox(account_id, dry_run=True, **kwargs):
+    """
+    Automated inbox cleanup workflow:
+    1. Delete spam
+    2. Categorize emails
+    3. Delete old emails (> 1 year) from Promotions
+    """
+    results = {
+        "spam_cleanup": None,
+        "categorization": None,
+        "old_promotions_cleanup": None
+    }
+    
+    # Step 1: Detect and delete spam
+    spam_result = await detect_spam(account_id, max_messages=200, delete=True, dry_run=dry_run)
+    results["spam_cleanup"] = spam_result
+    
+    # Step 2: Categorize emails
+    cat_result = await categorize_emails(account_id, max_messages=100, dry_run=dry_run)
+    results["categorization"] = cat_result
+    
+    # Step 3: Delete old promotions
+    promo_result = await bulk_delete_emails(
+        account_id,
+        criteria={"older_than_days": 365, "folder": "Promotions"},
+        dry_run=dry_run
+    )
+    results["old_promotions_cleanup"] = promo_result
+    
+    return {
+        "message": "Inbox cleanup complete" if not dry_run else "Inbox cleanup dry run complete",
+        "results": results,
+        "dry_run": dry_run
+    }
+
+
+# Document generation functions
+async def generate_presentation(title, slides: List[Dict], output_filename=None, **kwargs):
+    """
+    Generate PowerPoint presentation.
+    slides = [
+        {"type": "title", "title": "...", "subtitle": "..."},
+        {"type": "content", "title": "...", "content": "..."},
+        {"type": "bullets", "title": "...", "bullets": [...]},
+    ]
+    """
+    def _sync():
+        try:
+            from server.utils.pptx_generator import generate_presentation as gen_ppt
+            
+            if not output_filename:
+                output_filename = f"presentation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pptx"
+            
+            output_path = os.path.join(PPTX_OUTPUT_DIR, output_filename)
+            gen_ppt(title, slides, output_path)
+            
+            return {
+                "message": "Presentation generated",
+                "filename": output_filename,
+                "path": output_path,
+                "slides_count": len(slides)
+            }
+        except Exception as e:
+            return {"error": str(e)}
+    
+    return await asyncio.to_thread(_sync)
+
+
+async def create_briefing(title, summary, key_points: List[str], action_items: List[str], format="docx", **kwargs):
+    """
+    Create a briefing document.
+    format: "docx" or "pdf"
+    """
+    def _sync():
+        try:
+            from server.utils.document_generator import create_briefing_doc
+            
+            filename = f"briefing_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{format}"
+            
+            if format == "docx":
+                output_path = os.path.join(DOCX_OUTPUT_DIR, filename)
+            else:
+                output_path = os.path.join(PDF_OUTPUT_DIR, filename)
+            
+            create_briefing_doc(title, summary, key_points, action_items, output_path, format)
+            
+            return {
+                "message": "Briefing created",
+                "filename": filename,
+                "path": output_path,
+                "format": format
+            }
+        except Exception as e:
+            return {"error": str(e)}
+    
+    return await asyncio.to_thread(_sync)
+
+
+async def write_document(doc_type, title, content, format="docx", **kwargs):
+    """
+    Create formatted document (letter, memo, meeting notes).
+    doc_type: "letter", "memo", "meeting_notes"
+    format: "docx" or "pdf"
+    """
+    def _sync():
+        try:
+            from server.utils.document_generator import create_document
+            
+            filename = f"{doc_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{format}"
+            
+            if format == "docx":
+                output_path = os.path.join(DOCX_OUTPUT_DIR, filename)
+            else:
+                output_path = os.path.join(PDF_OUTPUT_DIR, filename)
+            
+            create_document(doc_type, title, content, output_path, format)
+            
+            return {
+                "message": f"{doc_type.replace('_', ' ').title()} created",
+                "filename": filename,
+                "path": output_path,
+                "format": format
+            }
+        except Exception as e:
+            return {"error": str(e)}
+    
+    return await asyncio.to_thread(_sync)
+
+
+# Summarize function
+async def summarize_text(text, **kwargs):
+    """Simple text summarization."""
+    words = text.split()
+    summary = " ".join(words[:min(30, max(1, len(words) // 3))]) + "..."
+    return {"summary": summary, "original_length": len(words)}
+
+
+# Router: execute function by name
+async def execute_function(function_name, arguments):
+    """Execute a function by name with given arguments."""
+    mapping = {
+        "test_connection": test_connection,
+        "take_notes": take_notes,
+        "get_notes": get_notes,
+        "list_notes": list_notes,
+        "add_calendar_event": add_calendar_event,
+        "get_calendar": get_calendar,
+        "add_contact": add_contact,
+        "search_contacts": search_contacts,
+        "add_email_account": add_email_account,
+        "list_email_accounts": list_email_accounts,
+        "fetch_unread_emails": fetch_unread_emails,
+        "mark_email_read": mark_email_read,
+        "send_email": send_email,
+        "bulk_delete_emails": bulk_delete_emails,
+        "categorize_emails": categorize_emails,
+        "detect_spam": detect_spam,
+        "cleanup_inbox": cleanup_inbox,
+        "generate_presentation": generate_presentation,
+        "create_briefing": create_briefing,
+        "write_document": write_document,
+        "summarize_text": summarize_text
+    }
+    
+    fn = mapping.get(function_name)
+    if not fn:
+        return {"error": f"Function '{function_name}' not found", "available": list(mapping.keys())}
+    return await fn(**arguments)
+
+
+def get_function_names():
+    """Get list of available function names."""
+    return list(FUNCTION_REGISTRY.keys())
+
+
+def get_function_info():
+    """Get function registry information."""
+    return FUNCTION_REGISTRY

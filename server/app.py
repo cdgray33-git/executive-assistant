@@ -4,13 +4,15 @@ FastAPI application adapted for native macOS Ollama usage.
 - Binds to localhost only
 - Uses server/security.require_api_key to protect function endpoints
 - Provides lightweight status & health endpoints for launchd checks
+- Email management and document generation endpoints
 """
 import os
 import logging
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, List
 
 from fastapi import FastAPI, Request, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 # local helpers
 from server.security import require_api_key
@@ -33,6 +35,41 @@ app.add_middleware(
 
 # Ollama adapter instance
 ollama = OllamaAdapter()
+
+# Request models for new endpoints
+class BulkEmailCleanupRequest(BaseModel):
+    account_id: str
+    criteria: Dict[str, Any]
+    dry_run: bool = True
+
+class EmailCategorizationRequest(BaseModel):
+    account_id: str
+    max_messages: int = 100
+    dry_run: bool = True
+
+class SpamFilterRequest(BaseModel):
+    account_id: str
+    max_messages: int = 100
+    delete: bool = False
+    dry_run: bool = True
+
+class PresentationRequest(BaseModel):
+    title: str
+    slides: List[Dict[str, Any]]
+    output_filename: Optional[str] = None
+
+class BriefingRequest(BaseModel):
+    title: str
+    summary: str
+    key_points: List[str]
+    action_items: List[str]
+    format: str = "docx"
+
+class DocumentRequest(BaseModel):
+    doc_type: str
+    title: str
+    content: str
+    format: str = "docx"
 
 def verify_key(x_api_key: Optional[str] = Header(None)):
     """
@@ -77,4 +114,118 @@ async def function_call(payload: Dict[str, Any]):
         return {"status": "success", "function": name, "arguments": args}
     except Exception as e:
         logger.exception("function_call error")
+        return {"status": "error", "error": str(e)}
+
+
+# Email management endpoints
+@app.post("/api/email/bulk_cleanup", dependencies=[Depends(verify_key)])
+async def bulk_email_cleanup(request: BulkEmailCleanupRequest):
+    """Bulk delete emails based on criteria."""
+    try:
+        import assistant_functions
+        result = await assistant_functions.bulk_delete_emails(
+            request.account_id,
+            request.criteria,
+            request.dry_run
+        )
+        return {"status": "success", "result": result}
+    except Exception as e:
+        logger.exception("bulk_cleanup error")
+        return {"status": "error", "error": str(e)}
+
+
+@app.post("/api/email/categorize", dependencies=[Depends(verify_key)])
+async def categorize_emails(request: EmailCategorizationRequest):
+    """Auto-categorize emails into folders."""
+    try:
+        import assistant_functions
+        result = await assistant_functions.categorize_emails(
+            request.account_id,
+            request.max_messages,
+            request.dry_run
+        )
+        return {"status": "success", "result": result}
+    except Exception as e:
+        logger.exception("categorize error")
+        return {"status": "error", "error": str(e)}
+
+
+@app.post("/api/email/spam_filter", dependencies=[Depends(verify_key)])
+async def spam_filter(request: SpamFilterRequest):
+    """Detect and optionally delete spam emails."""
+    try:
+        import assistant_functions
+        result = await assistant_functions.detect_spam(
+            request.account_id,
+            request.max_messages,
+            request.delete,
+            request.dry_run
+        )
+        return {"status": "success", "result": result}
+    except Exception as e:
+        logger.exception("spam_filter error")
+        return {"status": "error", "error": str(e)}
+
+
+@app.post("/api/email/cleanup_inbox", dependencies=[Depends(verify_key)])
+async def cleanup_inbox(account_id: str, dry_run: bool = True):
+    """Automated inbox cleanup workflow."""
+    try:
+        import assistant_functions
+        result = await assistant_functions.cleanup_inbox(account_id, dry_run)
+        return {"status": "success", "result": result}
+    except Exception as e:
+        logger.exception("cleanup_inbox error")
+        return {"status": "error", "error": str(e)}
+
+
+# Document generation endpoints
+@app.post("/api/generate_presentation", dependencies=[Depends(verify_key)])
+async def generate_presentation(request: PresentationRequest):
+    """Generate PowerPoint presentation."""
+    try:
+        import assistant_functions
+        result = await assistant_functions.generate_presentation(
+            request.title,
+            request.slides,
+            request.output_filename
+        )
+        return {"status": "success", "result": result}
+    except Exception as e:
+        logger.exception("generate_presentation error")
+        return {"status": "error", "error": str(e)}
+
+
+@app.post("/api/create_briefing", dependencies=[Depends(verify_key)])
+async def create_briefing(request: BriefingRequest):
+    """Create briefing document."""
+    try:
+        import assistant_functions
+        result = await assistant_functions.create_briefing(
+            request.title,
+            request.summary,
+            request.key_points,
+            request.action_items,
+            request.format
+        )
+        return {"status": "success", "result": result}
+    except Exception as e:
+        logger.exception("create_briefing error")
+        return {"status": "error", "error": str(e)}
+
+
+@app.post("/api/write_document", dependencies=[Depends(verify_key)])
+async def write_document(request: DocumentRequest):
+    """Create formatted document."""
+    try:
+        import assistant_functions
+        result = await assistant_functions.write_document(
+            request.doc_type,
+            request.title,
+            request.content,
+            request.format
+        )
+        return {"status": "success", "result": result}
+    except Exception as e:
+        logger.exception("write_document error")
         return {"status": "error", "error": str(e)}
