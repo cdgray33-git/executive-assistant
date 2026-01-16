@@ -104,13 +104,16 @@ log "Downloading repository archive and installing to $REPO_DIR..."
 TMP_ZIP="/tmp/ea_main.zip"
 rm -f "$TMP_ZIP" || true
 curl -fsSL -o "$TMP_ZIP" "$REPO_ARCHIVE_URL" || die "Failed to download repo archive."
-rm -rf /tmp/executive-assistant-main || true
+# Clean up any previous extraction attempts
+rm -rf /tmp/executive-assistant-* || true
 unzip -oq "$TMP_ZIP" -d /tmp || die "Failed to unzip repo archive."
-if [[ ! -d /tmp/executive-assistant-main ]]; then
-  die "Unexpected archive layout after unzip."
+# Find the extracted directory (GitHub creates executive-assistant-BRANCHNAME)
+EXTRACTED_DIR=$(find /tmp -maxdepth 1 -type d -name "executive-assistant-*" | head -n1)
+if [[ -z "$EXTRACTED_DIR" || ! -d "$EXTRACTED_DIR" ]]; then
+  die "Unexpected archive layout after unzip. Could not find extracted directory."
 fi
 rm -rf "$REPO_DIR" || true
-mv /tmp/executive-assistant-main "$REPO_DIR" || die "Failed to move repo to $REPO_DIR"
+mv "$EXTRACTED_DIR" "$REPO_DIR" || die "Failed to move repo to $REPO_DIR"
 rm -f "$TMP_ZIP"
 log "Repo installed to $REPO_DIR"
 
