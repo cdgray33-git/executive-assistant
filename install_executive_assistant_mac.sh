@@ -265,8 +265,10 @@ log "Creating server app (FastAPI) and browser UI..."
 # Ensure server static directory exists before writing files
 mkdir -p "$STATIC_DIR" || die "Failed to create $STATIC_DIR before writing UI"
 
-# server: requirements
-cat > "$SERVER_DIR/requirements.txt" <<'REQ'
+# server: requirements (only update if needed - add new dependencies)
+if [[ ! -f "$SERVER_DIR/requirements.txt" ]] || ! grep -q "python-pptx" "$SERVER_DIR/requirements.txt"; then
+  log "Updating requirements.txt with latest dependencies..."
+  cat > "$SERVER_DIR/requirements.txt" <<'REQ'
 fastapi
 uvicorn[standard]
 httpx
@@ -277,9 +279,12 @@ python-pptx
 python-docx
 reportlab
 REQ
+fi
 
-# server: app.py (serves static UI and API endpoints)
-cat > "$SERVER_DIR/app.py" <<'PY'
+# server: app.py - Use repository version if available, otherwise create basic version
+if [[ ! -f "$SERVER_DIR/app.py" ]]; then
+  log "Creating app.py from template..."
+  cat > "$SERVER_DIR/app.py" <<'PY'
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -364,9 +369,14 @@ async def list_functions():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 PY
+else
+  log "Using existing app.py from repository (includes latest features)"
+fi
 
-# server: assistant_functions.py (includes email IMAP/SMTP helpers + simple functions)
-cat > "$SERVER_DIR/assistant_functions.py" <<'PY'
+# server: assistant_functions.py - Use repository version if available
+if [[ ! -f "$SERVER_DIR/assistant_functions.py" ]]; then
+  log "Creating assistant_functions.py from template..."
+  cat > "$SERVER_DIR/assistant_functions.py" <<'PY'
 """
 assistant_functions.py
 Provides functions: notes, calendar, contacts, email (IMAP/SMTP), search, summarize.
@@ -674,6 +684,9 @@ def get_function_names():
 def get_function_info():
     return FUNCTION_REGISTRY
 PY
+else
+  log "Using existing assistant_functions.py from repository (includes latest email management features)"
+fi
 
 # server: static UI (simple chat + function calls + voice via browser dictation)
 cat > "$STATIC_DIR/index.html" <<'HTML'
