@@ -75,7 +75,7 @@ def require_api_key(x_api_key: Optional[str]):
     """
     expected = get_expected_api_key()
     if not expected:
-        # No key configured — allow but caller should log/monitor this state
+        # No key configured - allow but caller should log/monitor this state
         return
     if not x_api_key:
         raise HTTPException(status_code=401, detail="Missing API key header (X-API-Key)")
