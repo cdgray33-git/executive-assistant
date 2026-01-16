@@ -108,8 +108,13 @@ curl -fsSL -o "$TMP_ZIP" "$REPO_ARCHIVE_URL" || die "Failed to download repo arc
 rm -rf /tmp/executive-assistant-* || true
 unzip -oq "$TMP_ZIP" -d /tmp || die "Failed to unzip repo archive."
 # Find the extracted directory (GitHub creates executive-assistant-BRANCHNAME)
-EXTRACTED_DIR=$(find /tmp -maxdepth 1 -type d -name "executive-assistant-*" | head -n1)
+# Wait a moment for filesystem to sync
+sleep 1
+EXTRACTED_DIR=$(find /tmp -maxdepth 1 -type d -name "executive-assistant-*" 2>/dev/null | head -n1)
 if [[ -z "$EXTRACTED_DIR" || ! -d "$EXTRACTED_DIR" ]]; then
+  # Debug: list what was actually extracted
+  log "Contents of /tmp after extraction:"
+  ls -la /tmp | grep -i executive || true
   die "Unexpected archive layout after unzip. Could not find extracted directory."
 fi
 rm -rf "$REPO_DIR" || true
