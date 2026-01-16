@@ -102,24 +102,29 @@ fi
 # 1) Download & install repository into $REPO_DIR (fresh copy)
 log "Downloading repository archive and installing to $REPO_DIR..."
 TMP_ZIP="/tmp/ea_main.zip"
+TMP_EXTRACT="/tmp/ea_extract_$$"
 rm -f "$TMP_ZIP" || true
+rm -rf "$TMP_EXTRACT" || true
+mkdir -p "$TMP_EXTRACT"
 curl -fsSL -o "$TMP_ZIP" "$REPO_ARCHIVE_URL" || die "Failed to download repo archive."
-# Clean up any previous extraction attempts
-rm -rf /tmp/executive-assistant-* || true
-unzip -oq "$TMP_ZIP" -d /tmp || die "Failed to unzip repo archive."
+# Extract to dedicated temp directory
+unzip -oq "$TMP_ZIP" -d "$TMP_EXTRACT" || die "Failed to unzip repo archive."
 # Find the extracted directory (GitHub creates executive-assistant-BRANCHNAME)
 # Wait a moment for filesystem to sync
 sleep 1
-EXTRACTED_DIR=$(find /tmp -maxdepth 1 -type d -name "executive-assistant-*" 2>/dev/null | head -n1)
+EXTRACTED_DIR=$(find "$TMP_EXTRACT" -maxdepth 1 -type d ! -path "$TMP_EXTRACT" 2>/dev/null | head -n1)
 if [[ -z "$EXTRACTED_DIR" || ! -d "$EXTRACTED_DIR" ]]; then
   # Debug: list what was actually extracted
-  log "Contents of /tmp after extraction:"
-  ls -la /tmp | grep -i executive || true
+  log "Contents of extraction directory:"
+  ls -la "$TMP_EXTRACT" 2>/dev/null || true
+  log "Attempting to list subdirectories:"
+  find "$TMP_EXTRACT" -maxdepth 2 -type d 2>/dev/null || true
   die "Unexpected archive layout after unzip. Could not find extracted directory."
 fi
 rm -rf "$REPO_DIR" || true
 mv "$EXTRACTED_DIR" "$REPO_DIR" || die "Failed to move repo to $REPO_DIR"
 rm -f "$TMP_ZIP"
+rm -rf "$TMP_EXTRACT"
 log "Repo installed to $REPO_DIR"
 
 # Ensure directories (early)
