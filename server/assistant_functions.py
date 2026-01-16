@@ -134,8 +134,15 @@ def _is_spam(msg: email.message.Message) -> bool:
     
     # Check spam score in headers
     spam_score = msg.get("X-Spam-Score", "")
-    if spam_score and float(spam_score.split()[0] if spam_score.split() else 0) > 5:
-        return True
+    if spam_score:
+        try:
+            score_parts = spam_score.split()
+            if score_parts:
+                score_val = float(score_parts[0])
+                if score_val > 5:
+                    return True
+        except (ValueError, IndexError):
+            pass  # Invalid spam score format, continue with other checks
     
     # Check spam status
     spam_status = msg.get("X-Spam-Status", "").lower()

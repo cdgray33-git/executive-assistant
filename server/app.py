@@ -17,6 +17,7 @@ from pydantic import BaseModel
 # local helpers
 from server.security import require_api_key
 from server.llm.ollama_adapter import OllamaAdapter
+import assistant_functions
 
 logger = logging.getLogger("executive_assistant")
 logging.basicConfig(level=logging.INFO)
@@ -122,7 +123,6 @@ async def function_call(payload: Dict[str, Any]):
 async def bulk_email_cleanup(request: BulkEmailCleanupRequest):
     """Bulk delete emails based on criteria."""
     try:
-        import assistant_functions
         result = await assistant_functions.bulk_delete_emails(
             request.account_id,
             request.criteria,
@@ -138,7 +138,6 @@ async def bulk_email_cleanup(request: BulkEmailCleanupRequest):
 async def categorize_emails(request: EmailCategorizationRequest):
     """Auto-categorize emails into folders."""
     try:
-        import assistant_functions
         result = await assistant_functions.categorize_emails(
             request.account_id,
             request.max_messages,
@@ -154,7 +153,6 @@ async def categorize_emails(request: EmailCategorizationRequest):
 async def spam_filter(request: SpamFilterRequest):
     """Detect and optionally delete spam emails."""
     try:
-        import assistant_functions
         result = await assistant_functions.detect_spam(
             request.account_id,
             request.max_messages,
@@ -171,7 +169,6 @@ async def spam_filter(request: SpamFilterRequest):
 async def cleanup_inbox(account_id: str, dry_run: bool = True):
     """Automated inbox cleanup workflow."""
     try:
-        import assistant_functions
         result = await assistant_functions.cleanup_inbox(account_id, dry_run)
         return {"status": "success", "result": result}
     except Exception as e:
@@ -184,7 +181,6 @@ async def cleanup_inbox(account_id: str, dry_run: bool = True):
 async def generate_presentation(request: PresentationRequest):
     """Generate PowerPoint presentation."""
     try:
-        import assistant_functions
         result = await assistant_functions.generate_presentation(
             request.title,
             request.slides,
@@ -200,7 +196,6 @@ async def generate_presentation(request: PresentationRequest):
 async def create_briefing(request: BriefingRequest):
     """Create briefing document."""
     try:
-        import assistant_functions
         result = await assistant_functions.create_briefing(
             request.title,
             request.summary,
@@ -218,7 +213,6 @@ async def create_briefing(request: BriefingRequest):
 async def write_document(request: DocumentRequest):
     """Create formatted document."""
     try:
-        import assistant_functions
         result = await assistant_functions.write_document(
             request.doc_type,
             request.title,
