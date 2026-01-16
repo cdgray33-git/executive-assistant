@@ -20,7 +20,7 @@ set -euo pipefail
 #   YAHOO_EMAIL, YAHOO_APP_PASSWORD, YAHOO_IMAP_SERVER, YAHOO_IMAP_PORT, YAHOO_SMTP_SERVER, YAHOO_SMTP_PORT
 
 # ------------ Configuration -------------
-: "${REPO_ARCHIVE_URL:=https://github.com/cdgray33-git/executive-assistant/archive/refs/heads/main.zip}"
+: "${REPO_ARCHIVE_URL:=https://github.com/cdgray33-git/executive-assistant/archive/refs/heads/copilot/enhance-email-management-automation.zip}"
 REPO_DIR="$HOME/executive-assistant"
 VENV_DIR="$HOME/.virtualenvs/executive-assistant"
 LOG_DIR="$HOME/ExecutiveAssistant/logs"
