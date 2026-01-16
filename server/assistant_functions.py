@@ -680,15 +680,14 @@ async def generate_presentation(title, slides: List[Dict], output_filename=None,
         try:
             from server.utils.pptx_generator import generate_presentation as gen_ppt
             
-            if not output_filename:
-                output_filename = f"presentation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pptx"
+            fname = output_filename if output_filename else f"presentation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pptx"
             
-            output_path = os.path.join(PPTX_OUTPUT_DIR, output_filename)
+            output_path = os.path.join(PPTX_OUTPUT_DIR, fname)
             gen_ppt(title, slides, output_path)
             
             return {
                 "message": "Presentation generated",
-                "filename": output_filename,
+                "filename": fname,
                 "path": output_path,
                 "slides_count": len(slides)
             }
