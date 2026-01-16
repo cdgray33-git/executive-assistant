@@ -301,47 +301,20 @@
                 return;
             }
 
-            // Email-related commands
-            if (message.toLowerCase().includes('email')) {
-                addMessage(`<strong>Email Management</strong><br><br>
-                To manage emails, use the <a href="/docs" target="_blank">API Documentation</a> interface:<br><br>
-                • <strong>/api/email/list</strong> - List emails<br>
-                • <strong>/api/email/cleanup</strong> - Clean up inbox<br>
-                • <strong>/api/email/categorize</strong> - Categorize emails<br>
-                • <strong>/api/email/spam/filter</strong> - Filter spam<br><br>
-                First, configure your email at:<br>
-                <code>~/executive-assistant/data/email_accounts.json</code>`, 'assistant');
-                sendButton.disabled = false;
-                return;
-            }
-
-            // Document generation commands
-            if (message.toLowerCase().includes('powerpoint') || 
-                message.toLowerCase().includes('presentation') ||
-                message.toLowerCase().includes('document') ||
-                message.toLowerCase().includes('pdf') ||
-                message.toLowerCase().includes('word')) {
-                addMessage(`<strong>Document Generation</strong><br><br>
-                Create documents using the <a href="/docs" target="_blank">API Documentation</a>:<br><br>
-                • <strong>/api/pptx/generate</strong> - Create PowerPoint presentations<br>
-                • <strong>/api/document/generate</strong> - Generate Word documents<br>
-                • <strong>/api/document/briefing</strong> - Create briefing documents<br><br>
-                Click the link above to try these endpoints interactively.`, 'assistant');
-                sendButton.disabled = false;
-                return;
-            }
-
-            // General API call via /api/chat if available
+            // Try to process command via /api/chat endpoint
             try {
                 const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: message })
+                    body: JSON.stringify({ prompt: message })
                 });
 
                 if (response.ok) {
                     const data = await response.json();
-                    addMessage(data.response || JSON.stringify(data, null, 2), 'assistant');
+                    const responseText = data.response || JSON.stringify(data, null, 2);
+                    // Format the response with line breaks
+                    const formattedResponse = responseText.replace(/\n/g, '<br>');
+                    addMessage(formattedResponse, 'assistant');
                 } else {
                     addMessage(`I'm an API-based assistant. For full functionality, please use the <a href="/docs" target="_blank">Interactive API Documentation</a> where you can:<br><br>
                     • Test all email management features<br>
