@@ -18,6 +18,8 @@ if parent_dir not in sys.path:
 
 from fastapi import FastAPI, Request, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 # local helpers - import each separately to handle different path scenarios
@@ -59,6 +61,11 @@ app.add_middleware(
 # Ollama adapter instance
 ollama = OllamaAdapter()
 
+# Mount static files for UI
+ui_dir = os.path.join(parent_dir, "ui")
+if os.path.exists(ui_dir):
+    app.mount("/ui", StaticFiles(directory=ui_dir), name="ui")
+
 # Request models for new endpoints
 class BulkEmailCleanupRequest(BaseModel):
     account_id: str
@@ -99,6 +106,26 @@ def verify_key(x_api_key: Optional[str] = Header(None)):
     FastAPI dependency that verifies X-API-Key header using server.security.require_api_key.
     """
     require_api_key(x_api_key)
+
+
+@app.get("/")
+async def root():
+    """Redirect root to UI or show welcome message."""
+    ui_index = os.path.join(parent_dir, "ui", "index.html")
+    if os.path.exists(ui_index):
+        return FileResponse(ui_index)
+    return {
+        "message": "Executive Assistant API",
+        "endpoints": {
+            "health": "/health",
+            "status": "/api/status",
+            "models": "/api/models",
+            "functions": "/api/functions",
+            "function_call": "/api/function_call (POST)",
+            "chat": "/api/chat (POST)",
+            "ui": "/ui/ (if available)"
+        }
+    }
 
 
 @app.get("/health")

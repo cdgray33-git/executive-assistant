@@ -860,7 +860,8 @@ if [[ -n "${YAHOO_EMAIL:-}" && -n "${YAHOO_APP_PASSWORD:-}" ]]; then
   _save_email_account "$acct_id" "${YAHOO_IMAP_SERVER:-imap.mail.yahoo.com}" "${YAHOO_IMAP_PORT:-993}" "${YAHOO_SMTP_SERVER:-smtp.mail.yahoo.com}" "${YAHOO_SMTP_PORT:-465}" "${YAHOO_EMAIL}" "${YAHOO_APP_PASSWORD}" "true"
 fi
 
-if [[ "$FORCE_YES" != "yes" ]]; then
+# Check if stdin is a terminal (interactive)
+if [[ -t 0 ]] && [[ "$FORCE_YES" != "yes" ]]; then
   if confirm "Would you like to add an email account now so the assistant can fetch mail? (recommended)"; then
     while true; do
       read -r -p "Enter a short account id (e.g. mom_yahoo): " acct_id
@@ -885,7 +886,13 @@ if [[ "$FORCE_YES" != "yes" ]]; then
     log "Skipping interactive email account creation."
   fi
 else
-  log "FORCE_YES set; skipping interactive prompts."
+  if [[ "$FORCE_YES" == "yes" ]]; then
+    log "FORCE_YES set; skipping interactive prompts."
+  else
+    log "Non-interactive mode detected (stdin not a terminal)."
+    log "To configure email accounts, see: ${DOCS_DIR}/EMAIL_QUICKSTART.md"
+    log "Or run this installer again locally: cd ~/executive-assistant && ./install_executive_assistant_mac.sh"
+  fi
 fi
 
 # 9) Pull Ollama models (best-effort)
