@@ -193,7 +193,7 @@ async def chat(request: Request):
             return {"response": "Please provide a message."}
         
         # Check if user is asking about emails
-        if any(keyword in prompt for keyword in ["email", "mail", "inbox", "message"]):
+        if any(keyword in prompt for keyword in ["email", "mail", "inbox", "message", "spam"]):
             # Check if we have any email accounts configured
             accounts = await assistant_functions.list_email_accounts()
             
@@ -207,6 +207,57 @@ async def chat(request: Request):
             
             if not account_id:
                 return {"response": "No email account found."}
+            
+            # Check for spam deletion/cleanup requests
+            if any(word in prompt for word in ["spam", "junk"]) and any(action in prompt for action in ["delete", "remove", "clean", "filter"]):
+                # Extract time criteria if mentioned
+                older_than_days = None
+                if "6 month" in prompt or "six month" in prompt:
+                    older_than_days = 180
+                elif "year" in prompt or "12 month" in prompt:
+                    older_than_days = 365
+                elif "month" in prompt:
+                    # Extract number if present
+                    import re
+                    match = re.search(r'(\d+)\s*month', prompt)
+                    if match:
+                        older_than_days = int(match.group(1)) * 30
+                
+                # Determine if this is a dry run (user asking vs. commanding)
+                dry_run = any(phrase in prompt for phrase in ["can you", "would you", "could you", "possible", "able to"])
+                
+                if older_than_days:
+                    # Use bulk delete with spam criteria
+                    criteria = {
+                        "older_than_days": older_than_days,
+                        "folder": "INBOX"
+                    }
+                    result = await assistant_functions.bulk_delete_emails(account_id, criteria, dry_run=dry_run)
+                    
+                    if "error" in result:
+                        return {"response": f"Error deleting emails: {result['error']}"}
+                    
+                    if dry_run:
+                        return {"response": f"I found {result.get('would_delete', 0)} emails older than {older_than_days} days. To delete them, say 'Delete all spam older than {older_than_days // 30} months' (without asking if I can)."}
+                    else:
+                        return {"response": f"Successfully deleted {result.get('deleted_count', 0)} emails older than {older_than_days} days from your inbox."}
+                else:
+                    # General spam detection/deletion
+                    max_msgs = 100
+                    if "all" in prompt:
+                        max_msgs = 500
+                    
+                    delete = not dry_run
+                    result = await assistant_functions.detect_spam(account_id, max_messages=max_msgs, delete=delete, dry_run=dry_run)
+                    
+                    if "error" in result:
+                        return {"response": f"Error processing spam: {result['error']}"}
+                    
+                    spam_count = result.get("spam_count", 0)
+                    if dry_run:
+                        return {"response": f"I found {spam_count} spam messages in your inbox. To delete them, say 'Delete the spam from my inbox' (without asking if I can)."}
+                    else:
+                        return {"response": f"Successfully {'deleted' if delete else 'found'} {spam_count} spam messages from your inbox."}
             
             # Fetch unread emails
             if any(word in prompt for word in ["last", "recent", "unread", "show", "get", "fetch"]):
@@ -235,7 +286,7 @@ async def chat(request: Request):
         
         # Generic response for non-email queries
         return {
-            "response": "I can help you with email management, document generation, and more. Try asking:\n- 'Show me my last 3 emails'\n- 'Fetch my unread emails'\n\nOr use the API endpoints directly for document generation and other features."
+            "response": "I can help you with email management, document generation, and more. Try asking:\n- 'Show me my last 3 emails'\n- 'Fetch my unread emails'\n- 'Delete all spam from my inbox'\n- 'Remove emails older than 6 months'\n\nOr use the API endpoints directly for document generation and other features."
         }
         
     except Exception as e:
