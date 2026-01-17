@@ -506,17 +506,26 @@ async def chat(request: Request):
             # Spam filtering and deletion
             if any(word in prompt for word in ["spam", "junk"]):
                 older_than_days = None
-                if "6 month" in prompt or "six month" in prompt:
+                import re
+                from datetime import datetime
+                
+                # Check for "before YEAR" pattern
+                year_match = re.search(r'before\s+(\d{4})', prompt)
+                if year_match:
+                    year = int(year_match.group(1))
+                    current_year = datetime.now().year
+                    # Calculate days from start of specified year to now
+                    days_since_year = (current_year - year) * 365
+                    older_than_days = days_since_year
+                elif "6 month" in prompt or "six month" in prompt:
                     older_than_days = 180
                 elif "year" in prompt or "12 month" in prompt:
                     older_than_days = 365
                 elif "month" in prompt:
-                    import re
                     match = re.search(r'(\d+)\s*month', prompt)
                     if match:
                         older_than_days = int(match.group(1)) * 30
                 elif "day" in prompt:
-                    import re
                     match = re.search(r'(\d+)\s*day', prompt)
                     if match:
                         older_than_days = int(match.group(1))
