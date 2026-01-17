@@ -56,6 +56,7 @@ FUNCTION_REGISTRY = {
     "get_calendar": {"description": "Get calendar events", "parameters": ["days"]},
     "add_contact": {"description": "Add contact", "parameters": ["name", "email", "phone", "notes"]},
     "search_contacts": {"description": "Search contacts", "parameters": ["query"]},
+    "fetch_recent_emails": {"description": "Fetch recent emails (all or unread only)", "parameters": ["account_id", "max_messages", "unread_only"]},
     "fetch_unread_emails": {"description": "Fetch unread emails", "parameters": ["account_id", "max_messages"]},
     "mark_email_read": {"description": "Mark email read", "parameters": ["account_id", "uid"]},
     "send_email": {"description": "Send an email", "parameters": ["account_id", "to", "subject", "body"]},
@@ -328,8 +329,8 @@ async def list_email_accounts(**kwargs):
 
 
 # Enhanced email functions
-async def fetch_unread_emails(account_id, max_messages=10, **kwargs):
-    """Fetch unread emails from account."""
+async def fetch_recent_emails(account_id, max_messages=10, unread_only=False, **kwargs):
+    """Fetch recent emails from account (all emails or unread only)."""
     def _sync():
         accounts = _load_email_accounts()
         acct = accounts.get(account_id)
@@ -339,14 +340,23 @@ async def fetch_unread_emails(account_id, max_messages=10, **kwargs):
         try:
             M = _connect_imap(acct)
             M.select("INBOX")
-            typ, data = M.search(None, "UNSEEN")
+            
+            # Search for unread emails or all emails
+            if unread_only:
+                typ, data = M.search(None, "UNSEEN")
+            else:
+                typ, data = M.search(None, "ALL")
+                
             uids = data[0].split() if data and data[0] else []
-            uids = uids[-int(max_messages):]
+            uids = uids[-int(max_messages):]  # Get the last N emails
             results = []
             
             for uid in reversed(uids):
-                typ, msg_data = M.fetch(uid, "(RFC822)")
+                typ, msg_data = M.fetch(uid, "(RFC822 FLAGS)")
                 raw = msg_data[0][1]
+                flags = msg_data[0][0].decode() if msg_data[0][0] else ""
+                is_unread = "\\Seen" not in flags
+                
                 msg = email.message_from_bytes(raw)
                 subject = _decode_header(msg.get("Subject", ""))
                 frm = _decode_header(msg.get("From", ""))
@@ -375,7 +385,8 @@ async def fetch_unread_emails(account_id, max_messages=10, **kwargs):
                     "from": frm,
                     "subject": subject,
                     "date": date,
-                    "preview": preview
+                    "preview": preview,
+                    "unread": is_unread
                 })
             
             M.logout()
@@ -386,6 +397,11 @@ async def fetch_unread_emails(account_id, max_messages=10, **kwargs):
             return {"error": f"Unexpected error: {str(e)}"}
     
     return await asyncio.to_thread(_sync)
+
+
+async def fetch_unread_emails(account_id, max_messages=10, **kwargs):
+    """Fetch unread emails from account (wrapper for backwards compatibility)."""
+    return await fetch_recent_emails(account_id, max_messages, unread_only=True, **kwargs)
 
 
 async def mark_email_read(account_id, uid, **kwargs):
@@ -800,6 +816,7 @@ async def execute_function(function_name, arguments):
         "search_contacts": search_contacts,
         "add_email_account": add_email_account,
         "list_email_accounts": list_email_accounts,
+        "fetch_recent_emails": fetch_recent_emails,
         "fetch_unread_emails": fetch_unread_emails,
         "mark_email_read": mark_email_read,
         "send_email": send_email,
@@ -934,10 +951,26 @@ async def handle_create_presentation(params: Dict) -> Dict:
         ]
         
         result = await generate_presentation(title=title, slides=slides)
-        return {"response": result.get("response", "Presentation created successfully")}
+        
+        if "error" in result:
+            return {"response": f"Error creating presentation: {result['error']}"}
+        
+        # Provide detailed feedback with content preview
+        response = f"✓ PowerPoint Presentation Created: {title}\n\n"
+        response += f"📄 File: {result.get('path', result.get('filename', 'Unknown'))}\n"
+        response += f"📊 Slides: {result.get('slides_count', len(slides))}\n\n"
+        response += "Slide Preview:\n"
+        for i, slide in enumerate(slides, 1):
+            response += f"  {i}. {slide.get('title', 'Untitled')}\n"
+            content = slide.get('content', [])
+            if content:
+                for item in content[:2]:  # Show first 2 content items
+                    response += f"     • {item}\n"
+        
+        return {"response": response}
     except Exception as e:
         logger.error(f"Error handling create_presentation: {e}")
-        return {"error": str(e)}
+        return {"response": f"Error creating presentation: {str(e)}"}
 
 
 async def handle_create_document(params: Dict) -> Dict:
@@ -956,13 +989,26 @@ async def handle_create_document(params: Dict) -> Dict:
         
         result = await write_document(doc_type=doc_type, title=title, content=content)
         
-        # Provide more detailed response
-        if "file" in result:
-            return {"response": f"✓ {doc_type.title()} created: {title}\n" + 
-                               f"📄 File: {result['file']}\n\n" + 
-                               f"The document has been saved and is ready to use."}
-        else:
-            return {"response": result.get("response", "Document created successfully")}
+        if "error" in result:
+            return {"response": f"Error creating document: {result['error']}"}
+        
+        # Provide detailed response with content preview
+        response = f"✓ {doc_type.title()} Created: {title}\n\n"
+        response += f"📄 File: {result.get('path', result.get('filename', 'Unknown'))}\n"
+        response += f"📝 Format: {result.get('format', 'docx').upper()}\n\n"
+        response += "Content Preview:\n"
+        response += "─" * 50 + "\n"
+        
+        # Show first 300 characters of content
+        preview_content = content[:300].strip()
+        if len(content) > 300:
+            preview_content += "..."
+        response += preview_content + "\n"
+        response += "─" * 50 + "\n\n"
+        response += f"Total length: {len(content)} characters\n"
+        response += "The document has been saved and is ready to use."
+        
+        return {"response": response}
     except Exception as e:
         logger.error(f"Error handling create_document: {e}")
         return {"response": f"Error creating document: {str(e)}"}
@@ -995,10 +1041,10 @@ async def handle_view_notes(params: Dict) -> Dict:
 
 
 async def handle_view_emails(params: Dict) -> Dict:
-    """Handle email viewing intent."""
+    """Handle email viewing intent - shows ALL recent emails (read and unread)."""
     try:
         # Extract count parameter from various possible keys
-        max_messages = params.get("count", params.get("max_messages", params.get("limit", 5)))
+        max_messages = params.get("count", params.get("max_messages", params.get("limit", 10)))
         if isinstance(max_messages, str):
             # Try to extract number from string like "7 emails" or "last 5"
             import re
@@ -1006,7 +1052,14 @@ async def handle_view_emails(params: Dict) -> Dict:
             if match:
                 max_messages = int(match.group())
             else:
-                max_messages = 5
+                max_messages = 10
+        
+        # Check if user specifically wants unread only
+        unread_only = params.get("unread_only", False)
+        if isinstance(params.get("query", ""), str):
+            query_lower = params.get("query", "").lower()
+            if "unread" in query_lower and "only" in query_lower:
+                unread_only = True
         
         # Get first email account
         accounts = _load_email_accounts()
@@ -1014,26 +1067,30 @@ async def handle_view_emails(params: Dict) -> Dict:
             return {"response": "No email accounts configured. Please set up an email account first."}
         
         account_id = list(accounts.keys())[0]
-        result = await fetch_unread_emails(account_id=account_id, max_messages=max_messages)
+        result = await fetch_recent_emails(account_id=account_id, max_messages=max_messages, unread_only=unread_only)
         
         # Check for error first
         if "error" in result:
             return {"response": f"Could not fetch emails: {result['error']}"}
         
-        # fetch_unread_emails returns "messages" key, not "emails"
+        # fetch_recent_emails returns "messages" key
         if "messages" in result:
             emails = result["messages"]
             if not emails:
-                return {"response": "No unread emails found"}
+                return {"response": "No emails found"}
             
-            response = f"Found {len(emails)} unread email(s):\n\n"
+            unread_count = sum(1 for e in emails if e.get('unread', False))
+            email_type = "unread email(s)" if unread_only else f"email(s) ({unread_count} unread)"
+            response = f"Found {len(emails)} {email_type}:\n\n"
+            
             for i, email_data in enumerate(emails[:max_messages], 1):
-                response += f"{i}. From: {email_data.get('from', 'Unknown')}\n"
+                status_icon = "📧 [UNREAD]" if email_data.get('unread', False) else "✓ [READ]"
+                response += f"{i}. {status_icon} From: {email_data.get('from', 'Unknown')}\n"
                 response += f"   Subject: {email_data.get('subject', 'No subject')}\n"
                 response += f"   Date: {email_data.get('date', 'Unknown')}\n"
                 preview = email_data.get('preview', '')
                 if preview:
-                    response += f"   Preview: {preview[:100]}...\n"
+                    response += f"   Preview: {preview[:150]}...\n"
                 response += "\n"
             
             return {"response": response}
