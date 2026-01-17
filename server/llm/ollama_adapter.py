@@ -22,14 +22,20 @@ HTTP_TIMEOUT = float(os.environ.get("OLLAMA_HTTP_TIMEOUT", "30.0"))
 class OllamaAdapter:
     def __init__(self, base_url: str = None):
         self.base_url = base_url or OLLAMA_HTTP
-        self.client = httpx.AsyncClient(base_url=self.base_url, timeout=HTTP_TIMEOUT)
-        self.sync_client = httpx.Client(base_url=self.base_url, timeout=5.0)
+        self._client = None
+
+    def _get_client(self) -> httpx.AsyncClient:
+        """Lazy initialization of async client"""
+        if self._client is None:
+            self._client = httpx.AsyncClient(base_url=self.base_url, timeout=HTTP_TIMEOUT)
+        return self._client
 
     async def ping(self) -> bool:
         """Check Ollama HTTP API endpoint. Fallback to CLI list."""
         try:
             # Try HTTP /api/tags endpoint (Ollama's standard endpoint)
-            r = await self.client.get("/api/tags")
+            client = self._get_client()
+            r = await client.get("/api/tags")
             if r.status_code == 200:
                 return True
         except Exception as e:
@@ -41,7 +47,8 @@ class OllamaAdapter:
     async def list_models(self) -> List[Dict[str, Any]]:
         """Return list of available models (HTTP if possible, else CLI parsing)."""
         try:
-            r = await self.client.get("/api/tags")
+            client = self._get_client()
+            r = await client.get("/api/tags")
             if r.status_code == 200:
                 return r.json().get("models", [])
         except Exception as e:
@@ -83,7 +90,8 @@ class OllamaAdapter:
         payload.update(kwargs)
         # Try HTTP endpoint (Ollama's HTTP API)
         try:
-            r = await self.client.post("/api/generate", json=payload)
+            client = self._get_client()
+            r = await client.post("/api/generate", json=payload)
             if r.status_code in (200, 201):
                 # Ollama returns streaming responses by default, collect all chunks
                 response_text = ""
@@ -109,3 +117,9 @@ class OllamaAdapter:
         except Exception as e:
             logger.debug("Ollama CLI generate failed: %s", e)
             return {"error": "generate_failed", "detail": str(e)}
+    
+    async def close(self):
+        """Close the async client if it exists"""
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
