@@ -1041,7 +1041,7 @@ async def handle_view_notes(params: Dict) -> Dict:
 
 
 async def handle_view_emails(params: Dict) -> Dict:
-    """Handle email viewing intent - shows ALL recent emails (read and unread)."""
+    """Handle email viewing intent - shows ALL recent emails (read and unread) with filtering support."""
     try:
         # Extract count parameter from various possible keys
         max_messages = params.get("count", params.get("max_messages", params.get("limit", 10)))
@@ -1053,6 +1053,11 @@ async def handle_view_emails(params: Dict) -> Dict:
                 max_messages = int(match.group())
             else:
                 max_messages = 10
+        
+        # Extract filter parameters (LLM can provide these)
+        sender_filter = params.get("sender", params.get("from", params.get("from_email", "")))
+        subject_filter = params.get("subject", params.get("subject_contains", ""))
+        search_term = params.get("search", params.get("search_term", params.get("keyword", "")))
         
         # Check if user specifically wants unread only
         unread_only = params.get("unread_only", False)
@@ -1067,7 +1072,10 @@ async def handle_view_emails(params: Dict) -> Dict:
             return {"response": "No email accounts configured. Please set up an email account first."}
         
         account_id = list(accounts.keys())[0]
-        result = await fetch_recent_emails(account_id=account_id, max_messages=max_messages, unread_only=unread_only)
+        
+        # Fetch more emails if we're filtering (to ensure we get enough results after filtering)
+        fetch_count = max_messages * 10 if (sender_filter or subject_filter or search_term) else max_messages
+        result = await fetch_recent_emails(account_id=account_id, max_messages=fetch_count, unread_only=unread_only)
         
         # Check for error first
         if "error" in result:
@@ -1079,11 +1087,64 @@ async def handle_view_emails(params: Dict) -> Dict:
             if not emails:
                 return {"response": "No emails found"}
             
-            unread_count = sum(1 for e in emails if e.get('unread', False))
-            email_type = "unread email(s)" if unread_only else f"email(s) ({unread_count} unread)"
-            response = f"Found {len(emails)} {email_type}:\n\n"
+            # Apply client-side filtering based on LLM-extracted parameters
+            filtered_emails = emails
             
-            for i, email_data in enumerate(emails[:max_messages], 1):
+            if sender_filter:
+                sender_lower = sender_filter.lower()
+                filtered_emails = [
+                    e for e in filtered_emails 
+                    if sender_lower in e.get('from', '').lower()
+                ]
+            
+            if subject_filter:
+                subject_lower = subject_filter.lower()
+                filtered_emails = [
+                    e for e in filtered_emails 
+                    if subject_lower in e.get('subject', '').lower()
+                ]
+            
+            if search_term:
+                search_lower = search_term.lower()
+                filtered_emails = [
+                    e for e in filtered_emails 
+                    if search_lower in e.get('subject', '').lower() 
+                    or search_lower in e.get('from', '').lower()
+                    or search_lower in e.get('preview', '').lower()
+                ]
+            
+            # Limit to requested count after filtering
+            filtered_emails = filtered_emails[:max_messages]
+            
+            if not filtered_emails:
+                filter_desc = []
+                if sender_filter:
+                    filter_desc.append(f"from {sender_filter}")
+                if subject_filter:
+                    filter_desc.append(f"with subject containing '{subject_filter}'")
+                if search_term:
+                    filter_desc.append(f"matching '{search_term}'")
+                
+                if filter_desc:
+                    return {"response": f"No emails found {' and '.join(filter_desc)}"}
+                return {"response": "No emails found"}
+            
+            unread_count = sum(1 for e in filtered_emails if e.get('unread', False))
+            email_type = "unread email(s)" if unread_only else f"email(s) ({unread_count} unread)"
+            
+            # Build filter description for response
+            filter_parts = []
+            if sender_filter:
+                filter_parts.append(f"from {sender_filter}")
+            if subject_filter:
+                filter_parts.append(f"with subject containing '{subject_filter}'")
+            if search_term:
+                filter_parts.append(f"matching '{search_term}'")
+            
+            filter_text = f" {' and '.join(filter_parts)}" if filter_parts else ""
+            response = f"Found {len(filtered_emails)} {email_type}{filter_text}:\n\n"
+            
+            for i, email_data in enumerate(filtered_emails, 1):
                 status_icon = "📧 [UNREAD]" if email_data.get('unread', False) else "✓ [READ]"
                 response += f"{i}. {status_icon} From: {email_data.get('from', 'Unknown')}\n"
                 response += f"   Subject: {email_data.get('subject', 'No subject')}\n"
