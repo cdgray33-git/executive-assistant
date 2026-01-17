@@ -266,7 +266,7 @@ if ! pgrep -f "ollama serve" >/dev/null 2>&1; then
   nohup ollama serve --watch >"$LOG_DIR/ollama_stdout.log" 2>"$LOG_DIR/ollama_stderr.log" &
   sleep 2
 fi
-if wait_for_http "$OLLAMA_HTTP/api/health" 60; then
+if wait_for_http "$OLLAMA_HTTP/api/tags" 60; then
   log "Ollama HTTP API responding"
 else
   log "Ollama did not respond within timeout. Model pulls may still work later. Check $LOG_DIR/ollama_stderr.log"
@@ -919,11 +919,27 @@ if [[ "$SKIP_MODEL_PULL" != "yes" ]]; then
       
       # Pull the 3B model (required for AI NLP features)
       log "Pulling Llama 3.2 3B model ($MODEL_3B) - this may take several minutes..."
-      if ollama pull "$MODEL_3B" 2>&1 | tee "$LOG_DIR/model_pull.log"; then
-        log "✓ Successfully pulled Llama 3.2 3B model: $MODEL_3B"
-      else
-        err "✗ Failed to pull Llama 3.2 3B model: $MODEL_3B"
-        err "Check logs: $LOG_DIR/model_pull.log"
+      
+      # Try up to 2 times in case of network issues
+      pull_success=false
+      for attempt in 1 2; do
+        log "Pull attempt $attempt/2..."
+        if ollama pull "$MODEL_3B" 2>&1 | tee "$LOG_DIR/model_pull_${attempt}.log"; then
+          log "✓ Successfully pulled Llama 3.2 3B model: $MODEL_3B"
+          pull_success=true
+          break
+        else
+          err "✗ Pull attempt $attempt failed for $MODEL_3B"
+          if [ $attempt -eq 1 ]; then
+            log "Retrying in 5 seconds..."
+            sleep 5
+          fi
+        fi
+      done
+      
+      if [ "$pull_success" = "false" ]; then
+        err "✗ Failed to pull Llama 3.2 3B model after 2 attempts: $MODEL_3B"
+        err "Check logs: $LOG_DIR/model_pull_*.log"
         err "You can manually pull it later with: ollama pull $MODEL_3B"
       fi
       
@@ -942,15 +958,26 @@ if [[ "$SKIP_MODEL_PULL" != "yes" ]]; then
       
       # Verify models were pulled successfully
       log "Verifying installed models..."
+      sleep 2  # Give Ollama time to register the new models
+      
       if ollama list 2>&1 | tee "$LOG_DIR/ollama_list.log"; then
-        if ollama list | grep -q "$MODEL_3B"; then
+        log "Current models:"
+        ollama list
+        
+        if ollama list | grep -qi "llama3.2"; then
           log "✓ Confirmed: $MODEL_3B is installed and ready"
         else
           err "✗ Warning: $MODEL_3B not found in ollama list"
-          err "The server will attempt to auto-pull it on first use."
+          err "Attempting one more pull..."
+          if ollama pull "$MODEL_3B"; then
+            log "✓ Retry successful - model now available"
+          else
+            err "✗ Retry failed - The server will attempt to auto-pull it on first use."
+          fi
         fi
       else
-        err "Could not verify models with 'ollama list'"
+        err "Could not verify models with 'ollama list' - check Ollama is running"
+        err "Run: pgrep -f 'ollama serve' to check if Ollama daemon is running"
       fi
       
       log "Model installation logs saved to: $LOG_DIR/model_pull.log"
