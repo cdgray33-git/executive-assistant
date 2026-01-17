@@ -189,7 +189,7 @@ async def chat(request: Request):
         data = await request.json()
         prompt_original = data.get("prompt", "").strip()
         
-        if not prompt:
+        if not prompt_original:
             return {"response": "Please provide a message."}
         
         # Use Ollama LLM to interpret the user's intent
