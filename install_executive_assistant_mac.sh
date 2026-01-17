@@ -917,6 +917,22 @@ if [[ "$SKIP_MODEL_PULL" != "yes" ]]; then
     else
       log "Ollama CLI OK: $(ollama --version 2>&1 | head -1)"
       
+      # Ensure Ollama server is running before pulling models
+      log "Verifying Ollama server is running for model pulls..."
+      if ! pgrep -f "ollama serve" >/dev/null 2>&1; then
+        log "Ollama server not running, starting it now..."
+        nohup ollama serve --watch >"$LOG_DIR/ollama_stdout.log" 2>"$LOG_DIR/ollama_stderr.log" &
+        sleep 3
+      fi
+      
+      # Wait for Ollama HTTP API to be ready
+      if wait_for_http "$OLLAMA_HTTP/api/tags" 30; then
+        log "✓ Ollama server is ready for model pulls"
+      else
+        err "✗ Ollama server not responding. Check $LOG_DIR/ollama_stderr.log"
+        log "Attempting model pull anyway - it might work..."
+      fi
+      
       # Pull the 3B model (required for AI NLP features)
       log "Pulling Llama 3.2 3B model ($MODEL_3B) - this may take several minutes..."
       
