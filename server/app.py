@@ -40,8 +40,38 @@ except ImportError:
 # Import assistant_functions - try local import first (when running from server dir), then absolute
 try:
     import assistant_functions
+    from assistant_functions import (
+        handle_schedule_meeting,
+        handle_view_calendar,
+        handle_add_contact,
+        handle_search_contacts,
+        handle_send_email,
+        handle_create_presentation,
+        handle_create_document,
+        handle_take_note,
+        handle_view_notes,
+        handle_view_emails,
+        handle_delete_spam,
+        handle_categorize_emails,
+        handle_cleanup_emails
+    )
 except ImportError:
     from server import assistant_functions
+    from server.assistant_functions import (
+        handle_schedule_meeting,
+        handle_view_calendar,
+        handle_add_contact,
+        handle_search_contacts,
+        handle_send_email,
+        handle_create_presentation,
+        handle_create_document,
+        handle_take_note,
+        handle_view_notes,
+        handle_view_emails,
+        handle_delete_spam,
+        handle_categorize_emails,
+        handle_cleanup_emails
+    )
 
 logger = logging.getLogger("executive_assistant")
 logging.basicConfig(level=logging.INFO)
