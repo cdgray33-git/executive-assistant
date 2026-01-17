@@ -16,33 +16,34 @@ import httpx
 logger = logging.getLogger("ollama_adapter")
 OLLAMA_HTTP = os.environ.get("OLLAMA_HTTP", "http://127.0.0.1:11434")
 OLLAMA_CLI = os.environ.get("OLLAMA_BIN", "ollama")
-HTTP_TIMEOUT = float(os.environ.get("OLLAMA_HTTP_TIMEOUT", "5.0"))
+HTTP_TIMEOUT = float(os.environ.get("OLLAMA_HTTP_TIMEOUT", "30.0"))
 
 
 class OllamaAdapter:
     def __init__(self, base_url: str = None):
         self.base_url = base_url or OLLAMA_HTTP
-        self.client = httpx.Client(base_url=self.base_url, timeout=HTTP_TIMEOUT)
+        self.client = httpx.AsyncClient(base_url=self.base_url, timeout=HTTP_TIMEOUT)
+        self.sync_client = httpx.Client(base_url=self.base_url, timeout=5.0)
 
-    def ping(self) -> bool:
-        """Check Ollama HTTP health endpoint. Fallback to CLI list."""
+    async def ping(self) -> bool:
+        """Check Ollama HTTP API endpoint. Fallback to CLI list."""
         try:
-            # Try HTTP health
-            r = self.client.get("/api/health")
+            # Try HTTP /api/tags endpoint (Ollama's standard endpoint)
+            r = await self.client.get("/api/tags")
             if r.status_code == 200:
                 return True
         except Exception as e:
-            logger.debug("Ollama HTTP health check failed: %s", e)
+            logger.debug("Ollama HTTP API check failed: %s", e)
 
         # Fallback to CLI
         return self._ping_cli()
 
-    def list_models(self) -> List[Dict[str, Any]]:
+    async def list_models(self) -> List[Dict[str, Any]]:
         """Return list of available models (HTTP if possible, else CLI parsing)."""
         try:
-            r = self.client.get("/api/models")
+            r = await self.client.get("/api/tags")
             if r.status_code == 200:
-                return r.json()
+                return r.json().get("models", [])
         except Exception as e:
             logger.debug("Ollama HTTP list models failed: %s", e)
 
@@ -73,27 +74,38 @@ class OllamaAdapter:
             logger.debug("Ollama CLI list failed: %s", e)
             return []
 
-    def generate(self, model: str, prompt: str, **kwargs) -> Dict[str, Any]:
+    async def generate(self, model: str, prompt: str, **kwargs) -> Dict[str, Any]:
         """
         Simple generation helper that tries HTTP /api/generate (Ollama) first,
         then falls back to the CLI if needed.
         """
         payload = {"model": model, "prompt": prompt}
         payload.update(kwargs)
-        # Try HTTP endpoint (Ollama's HTTP API can differ between versions; adjust if needed)
+        # Try HTTP endpoint (Ollama's HTTP API)
         try:
-            r = self.client.post("/api/generate", json=payload)
+            r = await self.client.post("/api/generate", json=payload)
             if r.status_code in (200, 201):
-                return r.json()
+                # Ollama returns streaming responses by default, collect all chunks
+                response_text = ""
+                for line in r.text.strip().split('\n'):
+                    if line:
+                        try:
+                            chunk = json.loads(line)
+                            response_text += chunk.get("response", "")
+                            if chunk.get("done", False):
+                                return {"response": response_text}
+                        except json.JSONDecodeError:
+                            continue
+                return {"response": response_text}
         except Exception as e:
             logger.debug("Ollama HTTP generate failed: %s", e)
 
         # CLI fallback: use `ollama run <model> --prompt '<prompt>'` (simple)
         try:
-            cmd = [OLLAMA_CLI, "run", model, "--prompt", prompt]
+            cmd = [OLLAMA_CLI, "run", model, prompt]
             out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=60)
             text = out.decode("utf-8", errors="ignore")
-            return {"output": text}
+            return {"response": text}
         except Exception as e:
             logger.debug("Ollama CLI generate failed: %s", e)
             return {"error": "generate_failed", "detail": str(e)}

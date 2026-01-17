@@ -256,7 +256,7 @@ async def interpret_with_llm(prompt: str, ollama_adapter: OllamaAdapter) -> Dict
     """
     try:
         # Check if Ollama is available
-        if not ollama_adapter.ping():
+        if not await ollama_adapter.ping():
             return {"error": "Ollama not available"}
         
         # Create a structured prompt for the LLM
@@ -296,7 +296,7 @@ Respond ONLY with valid JSON, no other text:
         user_prompt = f"{system_prompt}\n\nUser request: {prompt}"
         
         # Call Ollama generate
-        result = ollama_adapter.generate(model="llama2", prompt=user_prompt, stream=False)
+        result = await ollama_adapter.generate(model="llama2", prompt=user_prompt, stream=False)
         
         # Extract JSON from response
         response_text = result.get("response", "").strip()
