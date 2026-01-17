@@ -10,3 +10,6 @@ exports/
 *.pkg
 *.tar.gz
 .vscode/
+__pycache__/
+*.pyc
+*.pyo

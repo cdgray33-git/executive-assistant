@@ -20,7 +20,7 @@ set -euo pipefail
 #   YAHOO_EMAIL, YAHOO_APP_PASSWORD, YAHOO_IMAP_SERVER, YAHOO_IMAP_PORT, YAHOO_SMTP_SERVER, YAHOO_SMTP_PORT
 
 # ------------ Configuration -------------
-: "${REPO_ARCHIVE_URL:=https://github.com/cdgray33-git/executive-assistant/archive/refs/heads/main.zip}"
+: "${REPO_ARCHIVE_URL:=https://github.com/cdgray33-git/executive-assistant/archive/refs/heads/copilot/enhance-email-management-automation.zip}"
 REPO_DIR="$HOME/executive-assistant"
 VENV_DIR="$HOME/.virtualenvs/executive-assistant"
 LOG_DIR="$HOME/ExecutiveAssistant/logs"
@@ -72,8 +72,10 @@ wait_for_http() {
 }
 
 ensure_dirs() {
-  mkdir -p "$DATA_DIR/notes" "$DATA_DIR/calendar" "$DATA_DIR/contacts" "$LOG_DIR" "$SERVER_DIR" "$STATIC_DIR" "$REPO_DIR/scripts"
-  log "Ensured data, server, static and log directories exist"
+  mkdir -p "$DATA_DIR/notes" "$DATA_DIR/calendar" "$DATA_DIR/contacts" \
+           "$DATA_DIR/outputs/presentations" "$DATA_DIR/outputs/documents" "$DATA_DIR/outputs/pdfs" \
+           "$LOG_DIR" "$SERVER_DIR" "$STATIC_DIR" "$REPO_DIR/scripts"
+  log "Ensured data, output, server, static and log directories exist"
 }
 
 # ----------------- Begin -----------------
@@ -100,16 +102,29 @@ fi
 # 1) Download & install repository into $REPO_DIR (fresh copy)
 log "Downloading repository archive and installing to $REPO_DIR..."
 TMP_ZIP="/tmp/ea_main.zip"
+TMP_EXTRACT="/tmp/ea_extract_$$"
 rm -f "$TMP_ZIP" || true
+rm -rf "$TMP_EXTRACT" || true
+mkdir -p "$TMP_EXTRACT"
 curl -fsSL -o "$TMP_ZIP" "$REPO_ARCHIVE_URL" || die "Failed to download repo archive."
-rm -rf /tmp/executive-assistant-main || true
-unzip -oq "$TMP_ZIP" -d /tmp || die "Failed to unzip repo archive."
-if [[ ! -d /tmp/executive-assistant-main ]]; then
-  die "Unexpected archive layout after unzip."
+# Extract to dedicated temp directory
+unzip -oq "$TMP_ZIP" -d "$TMP_EXTRACT" || die "Failed to unzip repo archive."
+# Find the extracted directory (GitHub creates executive-assistant-BRANCHNAME)
+# Wait a moment for filesystem to sync
+sleep 1
+EXTRACTED_DIR=$(find "$TMP_EXTRACT" -maxdepth 1 -type d ! -path "$TMP_EXTRACT" 2>/dev/null | head -n1)
+if [[ -z "$EXTRACTED_DIR" || ! -d "$EXTRACTED_DIR" ]]; then
+  # Debug: list what was actually extracted
+  log "Contents of extraction directory:"
+  ls -la "$TMP_EXTRACT" 2>/dev/null || true
+  log "Attempting to list subdirectories:"
+  find "$TMP_EXTRACT" -maxdepth 2 -type d 2>/dev/null || true
+  die "Unexpected archive layout after unzip. Could not find extracted directory."
 fi
 rm -rf "$REPO_DIR" || true
-mv /tmp/executive-assistant-main "$REPO_DIR" || die "Failed to move repo to $REPO_DIR"
+mv "$EXTRACTED_DIR" "$REPO_DIR" || die "Failed to move repo to $REPO_DIR"
 rm -f "$TMP_ZIP"
+rm -rf "$TMP_EXTRACT"
 log "Repo installed to $REPO_DIR"
 
 # Ensure directories (early)
@@ -247,14 +262,36 @@ log "Homebrew, ollama, python OK"
 # 3) Start Ollama daemon (background)
 log "Starting Ollama daemon (background)... logs -> $LOG_DIR/ollama_*.log"
 mkdir -p "$LOG_DIR"
-if ! pgrep -f "ollama serve" >/dev/null 2>&1; then
-  nohup ollama serve --watch >"$LOG_DIR/ollama_stdout.log" 2>"$LOG_DIR/ollama_stderr.log" &
-  sleep 2
-fi
-if wait_for_http "$OLLAMA_HTTP/api/health" 60; then
-  log "Ollama HTTP API responding"
+
+# Try to start Ollama - it may already be running or need to be launched from the app
+if ! pgrep -f "ollama" >/dev/null 2>&1; then
+  log "Ollama process not detected, attempting to start..."
+  
+  # Try starting via command line first
+  if check_cmd ollama; then
+    nohup ollama serve >"$LOG_DIR/ollama_stdout.log" 2>"$LOG_DIR/ollama_stderr.log" &
+    sleep 3
+  fi
+  
+  # If still not running, try opening the Ollama app (macOS specific)
+  if ! pgrep -f "ollama" >/dev/null 2>&1; then
+    if [ -d "/Applications/Ollama.app" ]; then
+      log "Starting Ollama via macOS app..."
+      open -a Ollama || log "Warning: Could not open Ollama app"
+      sleep 5
+    fi
+  fi
 else
-  log "Ollama did not respond within timeout. Model pulls may still work later. Check $LOG_DIR/ollama_stderr.log"
+  log "Ollama process already running"
+fi
+
+# Verify Ollama is responding
+if wait_for_http "$OLLAMA_HTTP/api/tags" 60; then
+  log "✓ Ollama HTTP API responding"
+else
+  err "✗ Ollama did not respond within timeout."
+  log "Troubleshooting: Try manually starting Ollama from Applications or run 'ollama serve' in a terminal"
+  log "Check logs: $LOG_DIR/ollama_stderr.log"
 fi
 
 # 4) Prepare server app files (FastAPI + static UI + assistant functions)
@@ -263,18 +300,26 @@ log "Creating server app (FastAPI) and browser UI..."
 # Ensure server static directory exists before writing files
 mkdir -p "$STATIC_DIR" || die "Failed to create $STATIC_DIR before writing UI"
 
-# server: requirements
-cat > "$SERVER_DIR/requirements.txt" <<'REQ'
+# server: requirements (only update if needed - add new dependencies)
+if [[ ! -f "$SERVER_DIR/requirements.txt" ]] || ! grep -q "python-pptx" "$SERVER_DIR/requirements.txt"; then
+  log "Updating requirements.txt with latest dependencies..."
+  cat > "$SERVER_DIR/requirements.txt" <<'REQ'
 fastapi
 uvicorn[standard]
 httpx
 python-dateutil
 pydantic
 keyring
+python-pptx
+python-docx
+reportlab
 REQ
+fi
 
-# server: app.py (serves static UI and API endpoints)
-cat > "$SERVER_DIR/app.py" <<'PY'
+# server: app.py - Use repository version if available, otherwise create basic version
+if [[ ! -f "$SERVER_DIR/app.py" ]]; then
+  log "Creating app.py from template..."
+  cat > "$SERVER_DIR/app.py" <<'PY'
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -359,9 +404,14 @@ async def list_functions():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 PY
+else
+  log "Using existing app.py from repository (includes latest features)"
+fi
 
-# server: assistant_functions.py (includes email IMAP/SMTP helpers + simple functions)
-cat > "$SERVER_DIR/assistant_functions.py" <<'PY'
+# server: assistant_functions.py - Use repository version if available
+if [[ ! -f "$SERVER_DIR/assistant_functions.py" ]]; then
+  log "Creating assistant_functions.py from template..."
+  cat > "$SERVER_DIR/assistant_functions.py" <<'PY'
 """
 assistant_functions.py
 Provides functions: notes, calendar, contacts, email (IMAP/SMTP), search, summarize.
@@ -669,6 +719,9 @@ def get_function_names():
 def get_function_info():
     return FUNCTION_REGISTRY
 PY
+else
+  log "Using existing assistant_functions.py from repository (includes latest email management features)"
+fi
 
 # server: static UI (simple chat + function calls + voice via browser dictation)
 cat > "$STATIC_DIR/index.html" <<'HTML'
@@ -829,7 +882,8 @@ if [[ -n "${YAHOO_EMAIL:-}" && -n "${YAHOO_APP_PASSWORD:-}" ]]; then
   _save_email_account "$acct_id" "${YAHOO_IMAP_SERVER:-imap.mail.yahoo.com}" "${YAHOO_IMAP_PORT:-993}" "${YAHOO_SMTP_SERVER:-smtp.mail.yahoo.com}" "${YAHOO_SMTP_PORT:-465}" "${YAHOO_EMAIL}" "${YAHOO_APP_PASSWORD}" "true"
 fi
 
-if [[ "$FORCE_YES" != "yes" ]]; then
+# Check if stdin is a terminal (interactive)
+if [[ -t 0 ]] && [[ "$FORCE_YES" != "yes" ]]; then
   if confirm "Would you like to add an email account now so the assistant can fetch mail? (recommended)"; then
     while true; do
       read -r -p "Enter a short account id (e.g. mom_yahoo): " acct_id
@@ -854,7 +908,13 @@ if [[ "$FORCE_YES" != "yes" ]]; then
     log "Skipping interactive email account creation."
   fi
 else
-  log "FORCE_YES set; skipping interactive prompts."
+  if [[ "$FORCE_YES" == "yes" ]]; then
+    log "FORCE_YES set; skipping interactive prompts."
+  else
+    log "Non-interactive mode detected (stdin not a terminal)."
+    log "To configure email accounts, see: ${REPO_DIR}/EMAIL_QUICKSTART.md"
+    log "Or run this installer again locally: cd ~/executive-assistant && ./install_executive_assistant_mac.sh"
+  fi
 fi
 
 # 9) Pull Ollama models (best-effort)
@@ -873,28 +933,115 @@ if [[ "$SKIP_MODEL_PULL" != "yes" ]]; then
     
     # Debugging command to verify ollama environment first
     log "Checking Ollama version and CLI status..."
-    ollama --version || die "Ollama CLI unavailable. Ensure Ollama is properly installed and accessible."
-    
-    # Pull the 3B and 7B models with detailed error logging
-    log "Pulling Llama 3.2 3B model ($MODEL_3B)..."
-    if ! ollama pull "$MODEL_3B"; then
-      err "Failed to pull Llama 3.2 3B model: $MODEL_3B. Check if the model name is valid and try again."
+    if ! ollama --version; then
+      err "Ollama CLI unavailable. Ensure Ollama is properly installed and accessible."
+      log "You can manually pull models later with: ollama pull $MODEL_3B"
     else
-      log "Successfully pulled Llama 3.2 3B model: $MODEL_3B."
+      log "Ollama CLI OK: $(ollama --version 2>&1 | head -1)"
+      
+      # Ensure Ollama server is running before pulling models
+      log "Verifying Ollama server is running for model pulls..."
+      if ! pgrep -f "ollama" >/dev/null 2>&1; then
+        log "Ollama server not running, starting it now..."
+        
+        # Try starting via command line
+        if check_cmd ollama; then
+          nohup ollama serve >"$LOG_DIR/ollama_stdout.log" 2>"$LOG_DIR/ollama_stderr.log" &
+          sleep 3
+        fi
+        
+        # If still not running, try opening the Ollama app (macOS specific)
+        if ! pgrep -f "ollama" >/dev/null 2>&1; then
+          if [ -d "/Applications/Ollama.app" ]; then
+            log "Starting Ollama via macOS app..."
+            open -a Ollama || log "Warning: Could not open Ollama app"
+            sleep 5
+          fi
+        fi
+      else
+        log "✓ Ollama process detected"
+      fi
+      
+      # Wait for Ollama HTTP API to be ready
+      if wait_for_http "$OLLAMA_HTTP/api/tags" 30; then
+        log "✓ Ollama server is ready for model pulls"
+      else
+        err "✗ Ollama server not responding. Check $LOG_DIR/ollama_stderr.log"
+        err "Make sure Ollama is installed and run 'ollama serve' manually in another terminal"
+        log "Attempting model pull anyway - it might work..."
+      fi
+      
+      # Pull the 3B model (required for AI NLP features)
+      log "Pulling Llama 3.2 3B model ($MODEL_3B) - this may take several minutes..."
+      
+      # Try up to 2 times in case of network issues
+      pull_success=false
+      for attempt in 1 2; do
+        log "Pull attempt $attempt/2..."
+        if ollama pull "$MODEL_3B" 2>&1 | tee "$LOG_DIR/model_pull_${attempt}.log"; then
+          log "✓ Successfully pulled Llama 3.2 3B model: $MODEL_3B"
+          pull_success=true
+          break
+        else
+          err "✗ Pull attempt $attempt failed for $MODEL_3B"
+          if [ $attempt -eq 1 ]; then
+            log "Retrying in 5 seconds..."
+            sleep 5
+          fi
+        fi
+      done
+      
+      if [ "$pull_success" = "false" ]; then
+        err "✗ Failed to pull Llama 3.2 3B model after 2 attempts: $MODEL_3B"
+        err "Check logs: $LOG_DIR/model_pull_*.log"
+        err "You can manually pull it later with: ollama pull $MODEL_3B"
+      fi
+      
+      # Optional: Pull the 7B model if user confirms and has space
+      if (( FREE_GB >= 20 )) && confirm "Pull optional Mistral 7B model (requires ~4GB, better quality)? "; then
+        log "Pulling Mistral 7B model ($MODEL_7B)..."
+        if ollama pull "$MODEL_7B" 2>&1 | tee -a "$LOG_DIR/model_pull.log"; then
+          log "✓ Successfully pulled Mistral 7B model: $MODEL_7B"
+        else
+          err "✗ Failed to pull Mistral 7B model: $MODEL_7B"
+          log "This is optional - the 3B model should work fine."
+        fi
+      else
+        log "Skipping optional 7B model pull."
+      fi
+      
+      # Verify models were pulled successfully
+      log "Verifying installed models..."
+      sleep 2  # Give Ollama time to register the new models
+      
+      if ollama list 2>&1 | tee "$LOG_DIR/ollama_list.log"; then
+        log "Current models:"
+        ollama list
+        
+        if ollama list | grep -qi "llama3.2"; then
+          log "✓ Confirmed: $MODEL_3B is installed and ready"
+        else
+          err "✗ Warning: $MODEL_3B not found in ollama list"
+          err "Attempting one more pull..."
+          if ollama pull "$MODEL_3B"; then
+            log "✓ Retry successful - model now available"
+          else
+            err "✗ Retry failed - The server will attempt to auto-pull it on first use."
+          fi
+        fi
+      else
+        err "Could not verify models with 'ollama list' - check Ollama is running"
+        err "Run: pgrep -f 'ollama serve' to check if Ollama daemon is running"
+      fi
+      
+      log "Model installation logs saved to: $LOG_DIR/model_pull.log"
+      log "To check models anytime: ollama list"
     fi
-    
-    log "Pulling Mistral 7B model ($MODEL_7B)..."
-    if ! ollama pull "$MODEL_7B"; then
-      err "Failed to pull Mistral 7B model: $MODEL_7B. Check if the model name is valid and try again."
-    else
-      log "Successfully pulled Mistral 7B model: $MODEL_7B."
-    fi
-    
-    # List models for verification
-    try ollama list || log "Warning: Unable to verify pulled models with 'ollama list'."
   fi
 else
   log "SKIP_MODEL_PULL=yes - skipping model downloads as requested."
+  log "Note: You'll need to manually pull a model for AI features:"
+  log "  ollama pull llama3.2:3b"
 fi
 
 # 10) Install launchd plist so server runs at login (per-user)
@@ -950,7 +1097,22 @@ log " - Repo: $REPO_DIR"
 log " - Data dir: $DATA_DIR"
 log " - Email accounts file: $EMAIL_FILE"
 log " - Models pulled (if not skipped): $MODEL_3B , $MODEL_7B"
-log " - To view logs: $LOG_DIR"
+log " - Log directory: $LOG_DIR"
 log ""
-log "If anything fails, copy the exact Terminal output or $LOG_DIR/* and send it back for troubleshooting."
+log "📋 TROUBLESHOOTING COMMANDS:"
+log "  Check server logs:    tail -50 $LOG_DIR/server_stderr.log"
+log "  Check Ollama logs:    tail -50 $LOG_DIR/ollama_stderr.log"
+log "  Check model pull:     tail -50 $LOG_DIR/model_pull.log"
+log "  List installed models: ollama list"
+log "  Check if server up:    curl http://127.0.0.1:8001/health"
+log "  Check Ollama health:   curl http://127.0.0.1:11434/api/tags"
+log ""
+log "🔧 IF AI FEATURES DON'T WORK:"
+log "  1. Check if Ollama is running: pgrep -f 'ollama serve'"
+log "  2. Start Ollama if needed: ollama serve"
+log "  3. Pull model if missing: ollama pull llama3.2:3b"
+log "  4. Restart server: launchctl unload $LAUNCH_PLIST_USER && launchctl load $LAUNCH_PLIST_USER"
+log ""
+log "For detailed help, see: $REPO_DIR/INSTALLATION_GUIDE.md"
+log "If anything fails, copy the exact Terminal output or $LOG_DIR/* for troubleshooting."
 exit 0

@@ -1,1 +1,343 @@
-﻿<!doctype html><html><head><meta charset="utf-8"/><title>Executive Assistant</title></head><body><div id="root"></div><script type="module" src="./src/App.js"></script></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Executive Assistant</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .header {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            color: white;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header h1 {
+            font-size: 28px;
+            font-weight: 600;
+        }
+        .header .status {
+            font-size: 14px;
+            margin-top: 5px;
+            opacity: 0.9;
+        }
+        .container {
+            flex: 1;
+            max-width: 1200px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 30px 20px;
+        }
+        .chat-container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            height: calc(100vh - 200px);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        .message {
+            margin-bottom: 20px;
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .message.user {
+            text-align: right;
+        }
+        .message-content {
+            display: inline-block;
+            padding: 12px 18px;
+            border-radius: 18px;
+            max-width: 70%;
+            word-wrap: break-word;
+        }
+        .message.user .message-content {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .message.assistant .message-content {
+            background: #f0f0f0;
+            color: #333;
+        }
+        .message.system .message-content {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffc107;
+        }
+        .input-area {
+            padding: 20px;
+            background: #f8f9fa;
+            border-top: 1px solid #e0e0e0;
+        }
+        .input-group {
+            display: flex;
+            gap: 10px;
+        }
+        .input-group input {
+            flex: 1;
+            padding: 12px 18px;
+            border: 2px solid #e0e0e0;
+            border-radius: 25px;
+            font-size: 15px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+        .input-group input:focus {
+            border-color: #667eea;
+        }
+        .input-group button {
+            padding: 12px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .input-group button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        .input-group button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .feature-button {
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: left;
+        }
+        .feature-button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+        .feature-button h3 {
+            font-size: 16px;
+            margin-bottom: 5px;
+        }
+        .feature-button p {
+            font-size: 13px;
+            opacity: 0.9;
+        }
+        .loading {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #667eea;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎯 Executive Assistant</h1>
+        <div class="status" id="status">Checking status...</div>
+    </div>
+    
+    <div class="container">
+        <div class="features">
+            <div class="feature-button" onclick="sendQuickCommand('list my emails')">
+                <h3>📧 Email Management</h3>
+                <p>Manage, categorize, and cleanup emails</p>
+            </div>
+            <div class="feature-button" onclick="sendQuickCommand('show api documentation')">
+                <h3>📚 API Documentation</h3>
+                <p>View all available endpoints</p>
+            </div>
+            <div class="feature-button" onclick="sendQuickCommand('check system health')">
+                <h3>💚 System Health</h3>
+                <p>Check Ollama and system status</p>
+            </div>
+            <div class="feature-button" onclick="window.open('/docs', '_blank')">
+                <h3>🔧 Interactive API</h3>
+                <p>Test endpoints directly</p>
+            </div>
+        </div>
+        
+        <div class="chat-container">
+            <div class="messages" id="messages">
+                <div class="message system">
+                    <div class="message-content">
+                        <strong>Welcome to Executive Assistant!</strong><br>
+                        I can help you with email management, document generation, and more.<br><br>
+                        <em>Try asking:</em><br>
+                        • "List my recent emails"<br>
+                        • "Create a PowerPoint presentation about Q4 results"<br>
+                        • "Generate a weekly report document"<br>
+                        • "Show me the API documentation" (opens /docs)
+                    </div>
+                </div>
+            </div>
+            
+            <div class="input-area">
+                <div class="input-group">
+                    <input 
+                        type="text" 
+                        id="messageInput" 
+                        placeholder="Type your message or command..."
+                        onkeypress="if(event.key==='Enter') sendMessage()"
+                    />
+                    <button id="sendButton" onclick="sendMessage()">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const messagesDiv = document.getElementById('messages');
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+        const statusDiv = document.getElementById('status');
+
+        // Check server health
+        async function checkHealth() {
+            try {
+                const response = await fetch('/health');
+                const data = await response.json();
+                const status = data.ollama ? 
+                    '✓ Online - Ollama Connected' : 
+                    '⚠️ Online - Ollama Disconnected (limited functionality)';
+                statusDiv.textContent = status;
+            } catch (error) {
+                statusDiv.textContent = '❌ Server connection error';
+            }
+        }
+
+        function addMessage(content, type = 'assistant') {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            contentDiv.innerHTML = content;
+            
+            messageDiv.appendChild(contentDiv);
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function sendQuickCommand(command) {
+            messageInput.value = command;
+            sendMessage();
+        }
+
+        async function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message) return;
+
+            // Add user message
+            addMessage(message, 'user');
+            messageInput.value = '';
+            sendButton.disabled = true;
+
+            // Special command handling
+            if (message.toLowerCase().includes('api documentation') || 
+                message.toLowerCase().includes('show docs')) {
+                window.open('/docs', '_blank');
+                addMessage('Opening API documentation in a new tab...', 'assistant');
+                sendButton.disabled = false;
+                return;
+            }
+
+            if (message.toLowerCase().includes('health') || 
+                message.toLowerCase().includes('status')) {
+                try {
+                    const response = await fetch('/health');
+                    const data = await response.json();
+                    const status = data.ollama ? 
+                        'System is healthy. Ollama is connected and ready.' : 
+                        'System is online but Ollama is not connected. Some AI features may be limited.';
+                    addMessage(`<strong>System Status:</strong><br>${status}<br><br>You can use the <a href="/docs" target="_blank">API documentation</a> to test all available endpoints.`, 'assistant');
+                } catch (error) {
+                    addMessage(`Error checking health: ${error.message}`, 'system');
+                }
+                sendButton.disabled = false;
+                return;
+            }
+
+            // Try to process command via /api/chat endpoint
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt: message })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const responseText = data.response || JSON.stringify(data, null, 2);
+                    // Format the response with line breaks
+                    const formattedResponse = responseText.replace(/\n/g, '<br>');
+                    addMessage(formattedResponse, 'assistant');
+                } else {
+                    addMessage(`I'm an API-based assistant. For full functionality, please use the <a href="/docs" target="_blank">Interactive API Documentation</a> where you can:<br><br>
+                    • Test all email management features<br>
+                    • Generate PowerPoint presentations<br>
+                    • Create Word documents and PDFs<br>
+                    • Execute assistant functions<br><br>
+                    The API documentation provides a complete interface for all features.`, 'assistant');
+                }
+            } catch (error) {
+                addMessage(`<strong>Available via API:</strong><br><br>
+                Use the <a href="/docs" target="_blank">API Documentation</a> to access:<br>
+                • Email management and cleanup<br>
+                • Document and presentation generation<br>
+                • All assistant functions<br><br>
+                The interactive API docs provide a full UI for testing and using all features.`, 'assistant');
+            }
+
+            sendButton.disabled = false;
+        }
+
+        // Initialize
+        checkHealth();
+        setInterval(checkHealth, 30000); // Update every 30 seconds
+    </script>
+</body>
+</html>
