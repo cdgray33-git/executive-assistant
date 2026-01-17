@@ -262,14 +262,36 @@ log "Homebrew, ollama, python OK"
 # 3) Start Ollama daemon (background)
 log "Starting Ollama daemon (background)... logs -> $LOG_DIR/ollama_*.log"
 mkdir -p "$LOG_DIR"
-if ! pgrep -f "ollama serve" >/dev/null 2>&1; then
-  nohup ollama serve --watch >"$LOG_DIR/ollama_stdout.log" 2>"$LOG_DIR/ollama_stderr.log" &
-  sleep 2
-fi
-if wait_for_http "$OLLAMA_HTTP/api/tags" 60; then
-  log "Ollama HTTP API responding"
+
+# Try to start Ollama - it may already be running or need to be launched from the app
+if ! pgrep -f "ollama" >/dev/null 2>&1; then
+  log "Ollama process not detected, attempting to start..."
+  
+  # Try starting via command line first
+  if check_cmd ollama; then
+    nohup ollama serve >"$LOG_DIR/ollama_stdout.log" 2>"$LOG_DIR/ollama_stderr.log" &
+    sleep 3
+  fi
+  
+  # If still not running, try opening the Ollama app (macOS specific)
+  if ! pgrep -f "ollama" >/dev/null 2>&1; then
+    if [ -d "/Applications/Ollama.app" ]; then
+      log "Starting Ollama via macOS app..."
+      open -a Ollama || log "Warning: Could not open Ollama app"
+      sleep 5
+    fi
+  fi
 else
-  log "Ollama did not respond within timeout. Model pulls may still work later. Check $LOG_DIR/ollama_stderr.log"
+  log "Ollama process already running"
+fi
+
+# Verify Ollama is responding
+if wait_for_http "$OLLAMA_HTTP/api/tags" 60; then
+  log "✓ Ollama HTTP API responding"
+else
+  err "✗ Ollama did not respond within timeout."
+  log "Troubleshooting: Try manually starting Ollama from Applications or run 'ollama serve' in a terminal"
+  log "Check logs: $LOG_DIR/ollama_stderr.log"
 fi
 
 # 4) Prepare server app files (FastAPI + static UI + assistant functions)
@@ -919,10 +941,25 @@ if [[ "$SKIP_MODEL_PULL" != "yes" ]]; then
       
       # Ensure Ollama server is running before pulling models
       log "Verifying Ollama server is running for model pulls..."
-      if ! pgrep -f "ollama serve" >/dev/null 2>&1; then
+      if ! pgrep -f "ollama" >/dev/null 2>&1; then
         log "Ollama server not running, starting it now..."
-        nohup ollama serve --watch >"$LOG_DIR/ollama_stdout.log" 2>"$LOG_DIR/ollama_stderr.log" &
-        sleep 3
+        
+        # Try starting via command line
+        if check_cmd ollama; then
+          nohup ollama serve >"$LOG_DIR/ollama_stdout.log" 2>"$LOG_DIR/ollama_stderr.log" &
+          sleep 3
+        fi
+        
+        # If still not running, try opening the Ollama app (macOS specific)
+        if ! pgrep -f "ollama" >/dev/null 2>&1; then
+          if [ -d "/Applications/Ollama.app" ]; then
+            log "Starting Ollama via macOS app..."
+            open -a Ollama || log "Warning: Could not open Ollama app"
+            sleep 5
+          fi
+        fi
+      else
+        log "✓ Ollama process detected"
       fi
       
       # Wait for Ollama HTTP API to be ready
@@ -930,6 +967,7 @@ if [[ "$SKIP_MODEL_PULL" != "yes" ]]; then
         log "✓ Ollama server is ready for model pulls"
       else
         err "✗ Ollama server not responding. Check $LOG_DIR/ollama_stderr.log"
+        err "Make sure Ollama is installed and run 'ollama serve' manually in another terminal"
         log "Attempting model pull anyway - it might work..."
       fi
       
