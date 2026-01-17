@@ -198,7 +198,7 @@ async def root():
 @app.get("/health")
 async def health():
     """Service health endpoint suitable for launchd or supervisor checks."""
-    healthy = ollama.ping()
+    healthy = await ollama.ping()
     return {"status": "healthy" if healthy else "degraded", "ollama": healthy}
 
 
@@ -210,7 +210,7 @@ async def api_status():
 @app.get("/api/models", dependencies=[Depends(verify_key)])
 async def api_models():
     """List models available to the local Ollama runtime. Requires API key if configured."""
-    models = ollama.list_models()
+    models = await ollama.list_models()
     return {"models": models}
 
 
