@@ -827,3 +827,245 @@ def get_function_names():
 def get_function_info():
     """Get function registry information."""
     return FUNCTION_REGISTRY
+
+
+# Handler functions for NLP intent routing
+async def handle_schedule_meeting(params: Dict) -> Dict:
+    """Handle meeting scheduling intent."""
+    try:
+        attendee_email = params.get("attendee_email", "")
+        date_str = params.get("date", "")
+        time_str = params.get("time", "")
+        title = params.get("title", f"Meeting with {attendee_email}")
+        
+        if not attendee_email or not date_str:
+            return {"error": "Missing required parameters: attendee_email and date"}
+        
+        # Add to calendar
+        result = await add_calendar_event(title=title, date=date_str, time=time_str)
+        
+        # Add contact if provided
+        if attendee_email:
+            await add_contact(name=attendee_email.split('@')[0], email=attendee_email)
+        
+        return {"response": f"✓ Meeting scheduled: {title} on {date_str}" + (f" at {time_str}" if time_str else "")}
+    except Exception as e:
+        logger.error(f"Error handling schedule_meeting: {e}")
+        return {"error": str(e)}
+
+
+async def handle_view_calendar(params: Dict) -> Dict:
+    """Handle calendar viewing intent."""
+    try:
+        days = params.get("days", 7)
+        result = await get_calendar(days=days)
+        return {"response": result.get("response", "No events found")}
+    except Exception as e:
+        logger.error(f"Error handling view_calendar: {e}")
+        return {"error": str(e)}
+
+
+async def handle_add_contact(params: Dict) -> Dict:
+    """Handle contact addition intent."""
+    try:
+        name = params.get("name", "")
+        email_addr = params.get("email", "")
+        phone = params.get("phone", "")
+        notes_txt = params.get("notes", "")
+        
+        if not name and not email_addr:
+            return {"error": "Missing required parameters: name or email"}
+        
+        result = await add_contact(name=name, email=email_addr, phone=phone, notes=notes_txt)
+        return {"response": result.get("response", "Contact added successfully")}
+    except Exception as e:
+        logger.error(f"Error handling add_contact: {e}")
+        return {"error": str(e)}
+
+
+async def handle_search_contacts(params: Dict) -> Dict:
+    """Handle contact search intent."""
+    try:
+        query = params.get("query", "")
+        if not query:
+            return {"error": "Missing search query"}
+        
+        result = await search_contacts(query=query)
+        return {"response": result.get("response", "No contacts found")}
+    except Exception as e:
+        logger.error(f"Error handling search_contacts: {e}")
+        return {"error": str(e)}
+
+
+async def handle_send_email(params: Dict) -> Dict:
+    """Handle email sending intent."""
+    try:
+        to_addr = params.get("to", "")
+        subject = params.get("subject", "Message from Executive Assistant")
+        body = params.get("body", "")
+        
+        if not to_addr or not body:
+            return {"error": "Missing required parameters: to and body"}
+        
+        # Get first email account
+        accounts = _load_email_accounts()
+        if not accounts:
+            return {"error": "No email accounts configured"}
+        
+        account_id = list(accounts.keys())[0]
+        result = await send_email(account_id=account_id, to=to_addr, subject=subject, body=body)
+        return {"response": result.get("response", "Email sent successfully")}
+    except Exception as e:
+        logger.error(f"Error handling send_email: {e}")
+        return {"error": str(e)}
+
+
+async def handle_create_presentation(params: Dict) -> Dict:
+    """Handle presentation creation intent."""
+    try:
+        title = params.get("title", "Presentation")
+        topic = params.get("topic", title)
+        
+        # Create default slide structure
+        slides = [
+            {"title": title, "content": ["Created by Executive Assistant"]},
+            {"title": "Overview", "content": [f"Topic: {topic}", "Key points will be covered"]},
+            {"title": "Conclusion", "content": ["Thank you"]}
+        ]
+        
+        result = await generate_presentation(title=title, slides=slides)
+        return {"response": result.get("response", "Presentation created successfully")}
+    except Exception as e:
+        logger.error(f"Error handling create_presentation: {e}")
+        return {"error": str(e)}
+
+
+async def handle_create_document(params: Dict) -> Dict:
+    """Handle document creation intent."""
+    try:
+        doc_type = params.get("doc_type", "report")
+        title = params.get("title", "Document")
+        content = params.get("content", "Document content")
+        
+        result = await write_document(doc_type=doc_type, title=title, content=content)
+        return {"response": result.get("response", "Document created successfully")}
+    except Exception as e:
+        logger.error(f"Error handling create_document: {e}")
+        return {"error": str(e)}
+
+
+async def handle_take_note(params: Dict) -> Dict:
+    """Handle note taking intent."""
+    try:
+        content = params.get("content", "")
+        title = params.get("title", None)
+        
+        if not content:
+            return {"error": "Missing note content"}
+        
+        result = await take_notes(content=content, title=title)
+        return {"response": result.get("response", "Note saved successfully")}
+    except Exception as e:
+        logger.error(f"Error handling take_note: {e}")
+        return {"error": str(e)}
+
+
+async def handle_view_notes(params: Dict) -> Dict:
+    """Handle note viewing intent."""
+    try:
+        result = await list_notes()
+        return {"response": result.get("response", "No notes found")}
+    except Exception as e:
+        logger.error(f"Error handling view_notes: {e}")
+        return {"error": str(e)}
+
+
+async def handle_view_emails(params: Dict) -> Dict:
+    """Handle email viewing intent."""
+    try:
+        max_messages = params.get("max_messages", 5)
+        
+        # Get first email account
+        accounts = _load_email_accounts()
+        if not accounts:
+            return {"error": "No email accounts configured"}
+        
+        account_id = list(accounts.keys())[0]
+        result = await fetch_unread_emails(account_id=account_id, max_messages=max_messages)
+        
+        if "emails" in result:
+            emails = result["emails"]
+            if not emails:
+                return {"response": "No unread emails found"}
+            
+            response = f"Found {len(emails)} unread email(s):\n\n"
+            for i, email_data in enumerate(emails[:max_messages], 1):
+                response += f"{i}. From: {email_data.get('from', 'Unknown')}\n"
+                response += f"   Subject: {email_data.get('subject', 'No subject')}\n"
+                response += f"   Date: {email_data.get('date', 'Unknown')}\n"
+                preview = email_data.get('preview', '')
+                if preview:
+                    response += f"   Preview: {preview[:100]}...\n"
+                response += "\n"
+            
+            return {"response": response}
+        
+        return {"response": result.get("response", "Could not fetch emails")}
+    except Exception as e:
+        logger.error(f"Error handling view_emails: {e}")
+        return {"error": str(e)}
+
+
+async def handle_delete_spam(params: Dict) -> Dict:
+    """Handle spam deletion intent."""
+    try:
+        days = params.get("days", 30)
+        dry_run = params.get("dry_run", False)
+        
+        # Get first email account
+        accounts = _load_email_accounts()
+        if not accounts:
+            return {"error": "No email accounts configured"}
+        
+        account_id = list(accounts.keys())[0]
+        result = await detect_spam(account_id=account_id, delete=True, dry_run=dry_run)
+        return {"response": result.get("response", "Spam detection completed")}
+    except Exception as e:
+        logger.error(f"Error handling delete_spam: {e}")
+        return {"error": str(e)}
+
+
+async def handle_categorize_emails(params: Dict) -> Dict:
+    """Handle email categorization intent."""
+    try:
+        dry_run = params.get("dry_run", False)
+        
+        # Get first email account
+        accounts = _load_email_accounts()
+        if not accounts:
+            return {"error": "No email accounts configured"}
+        
+        account_id = list(accounts.keys())[0]
+        result = await categorize_emails(account_id=account_id, dry_run=dry_run)
+        return {"response": result.get("response", "Email categorization completed")}
+    except Exception as e:
+        logger.error(f"Error handling categorize_emails: {e}")
+        return {"error": str(e)}
+
+
+async def handle_cleanup_emails(params: Dict) -> Dict:
+    """Handle email cleanup intent."""
+    try:
+        dry_run = params.get("dry_run", False)
+        
+        # Get first email account
+        accounts = _load_email_accounts()
+        if not accounts:
+            return {"error": "No email accounts configured"}
+        
+        account_id = list(accounts.keys())[0]
+        result = await cleanup_inbox(account_id=account_id, dry_run=dry_run)
+        return {"response": result.get("response", "Email cleanup completed")}
+    except Exception as e:
+        logger.error(f"Error handling cleanup_emails: {e}")
+        return {"error": str(e)}
