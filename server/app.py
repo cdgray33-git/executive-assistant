@@ -503,8 +503,8 @@ async def chat(request: Request):
             if not account_id:
                 return {"response": "No email account found."}
             
-            # Spam deletion
-            if any(word in prompt for word in ["spam", "junk"]) and any(action in prompt for action in ["delete", "remove", "clean", "filter"]):
+            # Spam filtering and deletion
+            if any(word in prompt for word in ["spam", "junk"]):
                 older_than_days = None
                 if "6 month" in prompt or "six month" in prompt:
                     older_than_days = 180
@@ -515,39 +515,66 @@ async def chat(request: Request):
                     match = re.search(r'(\d+)\s*month', prompt)
                     if match:
                         older_than_days = int(match.group(1)) * 30
+                elif "day" in prompt:
+                    import re
+                    match = re.search(r'(\d+)\s*day', prompt)
+                    if match:
+                        older_than_days = int(match.group(1))
                 
-                dry_run = any(phrase in prompt for phrase in ["can you", "would you", "could you"])
+                # Check if this is a deletion command or just viewing
+                is_delete_command = any(action in prompt for action in ["delete", "remove", "clean"]) and not any(phrase in prompt for phrase in ["can you", "would you", "could you"])
                 
                 if older_than_days:
                     criteria = {
                         "older_than_days": older_than_days,
                         "folder": "INBOX"
                     }
-                    result = await assistant_functions.bulk_delete_emails(account_id, criteria, dry_run=dry_run)
+                    result = await assistant_functions.bulk_delete_emails(account_id, criteria, dry_run=not is_delete_command)
                     
                     if "error" in result:
                         return {"response": f"Error: {result['error']}"}
                     
-                    if dry_run:
-                        return {"response": f"I found {result.get('would_delete', 0)} emails older than {older_than_days} days. To delete, say 'Delete all spam older than {older_than_days // 30} months'."}
+                    if not is_delete_command:
+                        return {"response": f"I found {result.get('would_delete', 0)} emails older than {older_than_days} days. To delete them, say 'Delete all spam older than {older_than_days} days'."}
                     else:
                         return {"response": f"✓ Deleted {result.get('deleted_count', 0)} emails older than {older_than_days} days."}
                 else:
                     max_msgs = 100
                     if "all" in prompt:
                         max_msgs = 500
+                    elif "10" in prompt or "ten" in prompt:
+                        max_msgs = 10
                     
-                    delete = not dry_run
-                    result = await assistant_functions.detect_spam(account_id, max_messages=max_msgs, delete=delete, dry_run=dry_run)
+                    # For spam, always use detect_spam to identify spam messages
+                    delete = is_delete_command
+                    result = await assistant_functions.detect_spam(account_id, max_messages=max_msgs, delete=delete, dry_run=not delete)
                     
                     if "error" in result:
                         return {"response": f"Error: {result['error']}"}
                     
                     spam_count = result.get("spam_count", 0)
-                    if dry_run:
-                        return {"response": f"I found {spam_count} spam messages. To delete, say 'Delete the spam from my inbox'."}
+                    spam_messages = result.get("spam_messages", [])
+                    
+                    if not delete:
+                        # Show the spam messages
+                        if spam_count == 0:
+                            return {"response": "No spam messages found."}
+                        
+                        response = f"Found {spam_count} spam message(s):\n\n"
+                        for i, msg in enumerate(spam_messages[:10], 1):
+                            response += f"{i}. From: {msg.get('from', 'Unknown')}\n"
+                            response += f"   Subject: {msg.get('subject', 'No subject')}\n"
+                            if msg.get('preview'):
+                                response += f"   Preview: {msg['preview'][:100]}...\n"
+                            response += "\n"
+                        
+                        if spam_count > 10:
+                            response += f"... and {spam_count - 10} more spam messages.\n\n"
+                        
+                        response += "To delete them, say 'Delete the spam from my inbox'."
+                        return {"response": response}
                     else:
-                        return {"response": f"✓ {'Deleted' if delete else 'Found'} {spam_count} spam messages."}
+                        return {"response": f"✓ Deleted {spam_count} spam messages."}
             
             # Email categorization
             if any(word in prompt for word in ["categorize", "organize", "sort", "folder"]):
