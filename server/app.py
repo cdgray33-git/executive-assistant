@@ -368,27 +368,35 @@ Analyze the user's request and respond with JSON containing the intent and extra
 Available intents:
 - schedule_meeting: Schedule a calendar event
 - view_calendar: Show calendar events
-- add_contact: Add a contact
-- search_contacts: Find contacts
-- send_email: Send an email
+- add_contact: Add a new contact to address book
+- search_contacts: ONLY for searching/finding people in the contacts/address book (NOT for emails)
+- send_email: Send an email message
 - create_presentation: Create PowerPoint
 - create_document: Create document/report/briefing/memo
 - take_note: Save a note
-- view_notes: Show notes
-- view_emails: Show emails/messages
+- view_notes: Show saved notes
+- view_emails: Show/find/search/display emails/messages (use this when user wants to see emails, even if filtering by sender/subject)
 - delete_spam: Delete spam/junk emails
 - categorize_emails: Organize emails into folders
 - cleanup_emails: Bulk cleanup old emails
 
+IMPORTANT DISTINCTIONS:
+- "show emails from X" or "find emails from X" = view_emails (with sender filter)
+- "find contact X" or "search for person X" = search_contacts (looking in address book)
+- If user mentions "email" or "message" in their request, it's likely view_emails, NOT search_contacts
+
 Extract these parameters when present:
-- email: email address
+- to/email: recipient email address (for sending)
+- sender/from: sender email address (for filtering emails)
+- subject: email subject or subject filter
 - date: date (relative like "tomorrow" or specific)
 - time: time (e.g., "2pm", "14:30")
-- title/subject: title or subject
+- title: title
 - content/message: content or message body
 - name: person's name
-- query: search query
+- query: search query for contacts
 - count: number (e.g., "5 emails", "10 days")
+- search/keyword: search term for filtering emails
 - older_than_days: age threshold for emails
 - delete: whether to actually delete (vs preview)
 
