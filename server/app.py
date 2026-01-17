@@ -182,52 +182,343 @@ async def list_functions():
 @app.post("/api/chat")
 async def chat(request: Request):
     """
-    Simple chat endpoint that processes natural language requests.
-    For demo purposes, this provides basic keyword matching to email functions.
+    Natural language chat endpoint with comprehensive NLP support for all assistant functions.
+    Supports email management, calendar, contacts, document generation, and more.
     """
     try:
         data = await request.json()
-        prompt = data.get("prompt", "").lower()
+        prompt_original = data.get("prompt", "").strip()
+        prompt = prompt_original.lower()
         
         if not prompt:
             return {"response": "Please provide a message."}
         
-        # Check if user is asking about emails
+        # === CALENDAR MANAGEMENT ===
+        if any(word in prompt for word in ["calendar", "meeting", "schedule", "appointment", "event"]):
+            # Adding a calendar event
+            if any(action in prompt for action in ["add", "create", "schedule", "set up", "book"]):
+                import re
+                from datetime import datetime, timedelta
+                
+                # Extract email address if present
+                email_match = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', prompt_original)
+                email_addr = email_match.group(0) if email_match else None
+                
+                # Extract time
+                time_match = re.search(r'(\d{1,2}):?(\d{2})?\s*(am|pm)?|(\d{1,2})\s*(am|pm)', prompt)
+                meeting_time = None
+                if time_match:
+                    if time_match.group(4):  # Format like "2pm"
+                        hour = int(time_match.group(4))
+                        minute = 0
+                        period = time_match.group(5)
+                    else:  # Format like "1:30pm"
+                        hour = int(time_match.group(1))
+                        minute = int(time_match.group(2)) if time_match.group(2) else 0
+                        period = time_match.group(3)
+                    
+                    if period:
+                        if period == 'pm' and hour != 12:
+                            hour += 12
+                        elif period == 'am' and hour == 12:
+                            hour = 0
+                    meeting_time = f"{hour:02d}:{minute:02d}"
+                
+                # Extract date
+                meeting_date = None
+                if "tomorrow" in prompt:
+                    meeting_date = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+                elif "today" in prompt:
+                    meeting_date = datetime.now().strftime("%Y-%m-%d")
+                elif "next week" in prompt:
+                    meeting_date = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
+                
+                # Extract meeting title
+                title = "Meeting"
+                if email_addr:
+                    name = email_addr.split('@')[0].replace('.', ' ').title()
+                    title = f"Meeting with {name}"
+                
+                description = f"Scheduled via Executive Assistant"
+                if email_addr:
+                    description += f"\nAttendee: {email_addr}"
+                
+                # Create the calendar event
+                if meeting_date:
+                    result = await assistant_functions.add_calendar_event(
+                        title=title,
+                        date=meeting_date,
+                        time=meeting_time,
+                        description=description
+                    )
+                    
+                    response = f"✓ Calendar event created: {title}\n"
+                    response += f"  Date: {meeting_date}\n"
+                    if meeting_time:
+                        response += f"  Time: {meeting_time}\n"
+                    
+                    # Add to contacts if email provided
+                    if email_addr:
+                        contact_name = email_addr.split('@')[0].replace('.', ' ').title()
+                        await assistant_functions.add_contact(
+                            name=contact_name,
+                            email=email_addr,
+                            notes=f"Added from calendar meeting on {meeting_date}"
+                        )
+                        response += f"\n✓ Contact added: {contact_name} ({email_addr})"
+                    
+                    # Send email invitation if requested
+                    if email_addr and any(word in prompt for word in ["send", "email", "invite"]):
+                        accounts = await assistant_functions.list_email_accounts()
+                        if accounts.get("count", 0) > 0:
+                            account_id = accounts.get("accounts", [])[0]
+                            subject = f"Meeting Invitation: {title}"
+                            body = f"You're invited to a meeting.\n\nDate: {meeting_date}\n"
+                            if meeting_time:
+                                body += f"Time: {meeting_time}\n"
+                            body += f"\nPlease let me know if this time works for you."
+                            
+                            await assistant_functions.send_email(
+                                account_id=account_id,
+                                to=email_addr,
+                                subject=subject,
+                                body=body
+                            )
+                            response += f"\n\n✓ Meeting invitation sent to {email_addr}"
+                    
+                    return {"response": response}
+                else:
+                    return {"response": "I couldn't determine the date. Please specify 'tomorrow', 'today', or a specific date."}
+            
+            # Viewing calendar
+            elif any(action in prompt for word in ["show", "view", "get", "list", "what"]):
+                days = 7
+                if "today" in prompt:
+                    days = 1
+                elif "week" in prompt:
+                    days = 7
+                elif "month" in prompt:
+                    days = 30
+                
+                result = await assistant_functions.get_calendar(days=days)
+                events = result.get("events", [])
+                
+                if not events:
+                    return {"response": f"No events scheduled for the next {days} day(s)."}
+                
+                response = f"Calendar events for the next {days} day(s):\n\n"
+                for event in events:
+                    response += f"• {event['title']}\n  {event['date']}"
+                    if event.get('time'):
+                        response += f" at {event['time']}"
+                    response += "\n"
+                    if event.get('description'):
+                        response += f"  {event['description']}\n"
+                    response += "\n"
+                
+                return {"response": response}
+        
+        # === CONTACTS MANAGEMENT ===
+        if any(word in prompt for word in ["contact", "phone", "address"]):
+            # Adding a contact
+            if any(action in prompt for action in ["add", "create", "save", "new"]):
+                import re
+                email_match = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', prompt_original)
+                email_addr = email_match.group(0) if email_match else None
+                
+                phone_match = re.search(r'(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}', prompt_original)
+                phone_num = phone_match.group(0) if phone_match else None
+                
+                name = None
+                if email_addr:
+                    name = email_addr.split('@')[0].replace('.', ' ').title()
+                
+                if name and (email_addr or phone_num):
+                    result = await assistant_functions.add_contact(
+                        name=name,
+                        email=email_addr,
+                        phone=phone_num,
+                        notes="Added via chat"
+                    )
+                    response = f"✓ Contact added: {name}\n"
+                    if email_addr:
+                        response += f"  Email: {email_addr}\n"
+                    if phone_num:
+                        response += f"  Phone: {phone_num}"
+                    return {"response": response}
+                else:
+                    return {"response": "Please provide a name and either email or phone number."}
+            
+            # Searching contacts
+            elif any(action in prompt for action in ["search", "find", "look", "show", "get"]):
+                words = prompt.split()
+                query = " ".join(words[-2:]) if len(words) >= 2 else ""
+                
+                result = await assistant_functions.search_contacts(query=query)
+                contacts = result.get("contacts", [])
+                
+                if not contacts:
+                    return {"response": f"No contacts found matching '{query}'."}
+                
+                response = f"Found {len(contacts)} contact(s):\n\n"
+                for contact in contacts:
+                    response += f"• {contact['name']}\n"
+                    if contact.get('email'):
+                        response += f"  Email: {contact['email']}\n"
+                    if contact.get('phone'):
+                        response += f"  Phone: {contact['phone']}\n"
+                    response += "\n"
+                
+                return {"response": response}
+        
+        # === EMAIL SENDING ===
+        if any(phrase in prompt for phrase in ["send email", "send an email", "email to", "write email", "compose email"]):
+            import re
+            email_match = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', prompt_original)
+            recipient = email_match.group(0) if email_match else None
+            
+            if recipient:
+                accounts = await assistant_functions.list_email_accounts()
+                if accounts.get("count", 0) == 0:
+                    return {"response": "No email accounts configured. Please add an email account first."}
+                
+                account_id = accounts.get("accounts", [])[0]
+                subject = f"Message from Executive Assistant"
+                body = f"This is an automated message sent via Executive Assistant."
+                
+                content_match = re.search(r'(?:about|regarding|re:|subject:)\s+(.+)', prompt)
+                if content_match:
+                    subject = content_match.group(1).strip().title()
+                
+                result = await assistant_functions.send_email(
+                    account_id=account_id,
+                    to=recipient,
+                    subject=subject,
+                    body=body
+                )
+                
+                if "error" in result:
+                    return {"response": f"Error sending email: {result['error']}"}
+                
+                return {"response": f"✓ Email sent to {recipient}\nSubject: {subject}"}
+            else:
+                return {"response": "Please specify a recipient email address."}
+        
+        # === DOCUMENT GENERATION ===
+        if any(word in prompt for word in ["powerpoint", "presentation", "slides", "ppt"]):
+            if any(action in prompt for action in ["create", "generate", "make", "build"]):
+                import re
+                title_match = re.search(r'(?:about|on|for|titled|called)\s+["\']?([^"\']+)["\']?', prompt)
+                title = title_match.group(1).strip().title() if title_match else "Presentation"
+                
+                slides = [
+                    {"title": title, "content": "Created by Executive Assistant"},
+                    {"title": "Overview", "content": "This presentation was automatically generated."}
+                ]
+                
+                result = await assistant_functions.generate_presentation(
+                    title=title,
+                    slides=slides
+                )
+                
+                if "error" in result:
+                    return {"response": f"Error: {result['error']}"}
+                
+                filename = result.get("filename", "presentation.pptx")
+                return {"response": f"✓ PowerPoint created: {filename}\n\nTitle: {title}\nSlides: {len(slides)}\n\nLocation: outputs/presentations/"}
+        
+        if any(word in prompt for word in ["briefing", "report", "document", "memo"]):
+            if any(action in prompt for action in ["create", "generate", "make", "write", "draft"]):
+                import re
+                title_match = re.search(r'(?:about|on|for|titled|called)\s+["\']?([^"\']+)["\']?', prompt)
+                title = title_match.group(1).strip().title() if title_match else "Document"
+                
+                if "briefing" in prompt:
+                    result = await assistant_functions.create_briefing(
+                        title=title,
+                        summary="This briefing was created by Executive Assistant.",
+                        key_points=["Key point 1", "Key point 2"],
+                        action_items=["Action item 1"],
+                        format="docx"
+                    )
+                elif "memo" in prompt:
+                    result = await assistant_functions.write_document(
+                        doc_type="memo",
+                        title=title,
+                        content="This memo was created by Executive Assistant.",
+                        format="docx"
+                    )
+                else:
+                    result = await assistant_functions.write_document(
+                        doc_type="report",
+                        title=title,
+                        content="This report was created by Executive Assistant.",
+                        format="docx"
+                    )
+                
+                if "error" in result:
+                    return {"response": f"Error: {result['error']}"}
+                
+                filename = result.get("filename", "document.docx")
+                return {"response": f"✓ Document created: {filename}\n\nTitle: {title}\n\nLocation: outputs/documents/"}
+        
+        # === NOTES ===
+        if any(word in prompt for word in ["note", "remind", "remember"]):
+            if any(action in prompt for action in ["take", "save", "write", "add", "create"]):
+                content = prompt_original
+                title = None
+                
+                import re
+                title_match = re.search(r'(?:titled|called|named)\s+["\']?([^"\']+)["\']?', prompt)
+                if title_match:
+                    title = title_match.group(1).strip()
+                
+                result = await assistant_functions.take_notes(content=content, title=title)
+                return {"response": f"✓ Note saved{' as: ' + title if title else ''}"}
+            
+            elif any(action in prompt for action in ["show", "get", "list", "view"]):
+                result = await assistant_functions.get_notes()
+                notes = result.get("notes", [])
+                
+                if not notes:
+                    return {"response": "No notes found."}
+                
+                response = f"Your notes ({len(notes)}):\n\n"
+                for note in notes[:10]:
+                    response += f"• {note.get('title', 'Untitled')}\n"
+                    preview = note.get('content', '')[:100]
+                    response += f"  {preview}{'...' if len(note.get('content', '')) > 100 else ''}\n\n"
+                
+                return {"response": response}
+        
+        # === EMAIL MANAGEMENT ===
         if any(keyword in prompt for keyword in ["email", "mail", "inbox", "message", "spam"]):
-            # Check if we have any email accounts configured
             accounts = await assistant_functions.list_email_accounts()
             
             if accounts.get("count", 0) == 0:
-                return {
-                    "response": "No email accounts are configured. Please add an email account first using the web interface or by calling the add_email_account function."
-                }
+                return {"response": "No email accounts configured. Please add an email account first."}
             
-            # Get the first account ID
             account_id = accounts.get("accounts", [])[0] if accounts.get("accounts") else None
             
             if not account_id:
                 return {"response": "No email account found."}
             
-            # Check for spam deletion/cleanup requests
+            # Spam deletion
             if any(word in prompt for word in ["spam", "junk"]) and any(action in prompt for action in ["delete", "remove", "clean", "filter"]):
-                # Extract time criteria if mentioned
                 older_than_days = None
                 if "6 month" in prompt or "six month" in prompt:
                     older_than_days = 180
                 elif "year" in prompt or "12 month" in prompt:
                     older_than_days = 365
                 elif "month" in prompt:
-                    # Extract number if present
                     import re
                     match = re.search(r'(\d+)\s*month', prompt)
                     if match:
                         older_than_days = int(match.group(1)) * 30
                 
-                # Determine if this is a dry run (user asking vs. commanding)
-                dry_run = any(phrase in prompt for phrase in ["can you", "would you", "could you", "possible", "able to"])
+                dry_run = any(phrase in prompt for phrase in ["can you", "would you", "could you"])
                 
                 if older_than_days:
-                    # Use bulk delete with spam criteria
                     criteria = {
                         "older_than_days": older_than_days,
                         "folder": "INBOX"
@@ -235,14 +526,13 @@ async def chat(request: Request):
                     result = await assistant_functions.bulk_delete_emails(account_id, criteria, dry_run=dry_run)
                     
                     if "error" in result:
-                        return {"response": f"Error deleting emails: {result['error']}"}
+                        return {"response": f"Error: {result['error']}"}
                     
                     if dry_run:
-                        return {"response": f"I found {result.get('would_delete', 0)} emails older than {older_than_days} days. To delete them, say 'Delete all spam older than {older_than_days // 30} months' (without asking if I can)."}
+                        return {"response": f"I found {result.get('would_delete', 0)} emails older than {older_than_days} days. To delete, say 'Delete all spam older than {older_than_days // 30} months'."}
                     else:
-                        return {"response": f"Successfully deleted {result.get('deleted_count', 0)} emails older than {older_than_days} days from your inbox."}
+                        return {"response": f"✓ Deleted {result.get('deleted_count', 0)} emails older than {older_than_days} days."}
                 else:
-                    # General spam detection/deletion
                     max_msgs = 100
                     if "all" in prompt:
                         max_msgs = 500
@@ -251,13 +541,28 @@ async def chat(request: Request):
                     result = await assistant_functions.detect_spam(account_id, max_messages=max_msgs, delete=delete, dry_run=dry_run)
                     
                     if "error" in result:
-                        return {"response": f"Error processing spam: {result['error']}"}
+                        return {"response": f"Error: {result['error']}"}
                     
                     spam_count = result.get("spam_count", 0)
                     if dry_run:
-                        return {"response": f"I found {spam_count} spam messages in your inbox. To delete them, say 'Delete the spam from my inbox' (without asking if I can)."}
+                        return {"response": f"I found {spam_count} spam messages. To delete, say 'Delete the spam from my inbox'."}
                     else:
-                        return {"response": f"Successfully {'deleted' if delete else 'found'} {spam_count} spam messages from your inbox."}
+                        return {"response": f"✓ {'Deleted' if delete else 'Found'} {spam_count} spam messages."}
+            
+            # Email categorization
+            if any(word in prompt for word in ["categorize", "organize", "sort", "folder"]):
+                dry_run = any(phrase in prompt for phrase in ["can you", "would you"])
+                result = await assistant_functions.categorize_emails(account_id, max_messages=100, dry_run=dry_run)
+                
+                if "error" in result:
+                    return {"response": f"Error: {result['error']}"}
+                
+                categorized = result.get("categorized", {})
+                response = "✓ Email categorization complete:\n\n"
+                for category, count in categorized.items():
+                    response += f"• {category}: {count} emails\n"
+                
+                return {"response": response}
             
             # Fetch unread emails
             if any(word in prompt for word in ["last", "recent", "unread", "show", "get", "fetch"]):
@@ -270,7 +575,7 @@ async def chat(request: Request):
                 result = await assistant_functions.fetch_unread_emails(account_id, max_messages=max_msgs)
                 
                 if "error" in result:
-                    return {"response": f"Error fetching emails: {result['error']}"}
+                    return {"response": f"Error: {result['error']}"}
                 
                 messages = result.get("messages", [])
                 if not messages:
@@ -284,9 +589,15 @@ async def chat(request: Request):
                 
                 return {"response": response}
         
-        # Generic response for non-email queries
+        # Generic help message
         return {
-            "response": "I can help you with email management, document generation, and more. Try asking:\n- 'Show me my last 3 emails'\n- 'Fetch my unread emails'\n- 'Delete all spam from my inbox'\n- 'Remove emails older than 6 months'\n\nOr use the API endpoints directly for document generation and other features."
+            "response": "I'm your Executive Assistant. I can help you with:\n\n" +
+                       "📧 Email: 'Show my last 5 emails', 'Delete all spam'\n" +
+                       "📅 Calendar: 'Schedule meeting with john@example.com tomorrow at 2pm'\n" +
+                       "👥 Contacts: 'Add contact john@example.com'\n" +
+                       "📄 Documents: 'Create a PowerPoint about Q4 results'\n" +
+                       "📝 Notes: 'Take a note: Remember to...'\n\n" +
+                       "What would you like me to help you with?"
         }
         
     except Exception as e:
