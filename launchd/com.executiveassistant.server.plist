@@ -8,9 +8,7 @@
 
     <key>ProgramArguments</key>
     <array>
-      <string>/bin/bash</string>
-      <string>-lc</string>
-      <string>/c/Users/Admin/executive-assistant/scripts/run_server.sh</string>
+      <string>/Users/YOUR_USERNAME/executive-assistant/scripts/run_server.sh</string>
     </array>
 
     <key>KeepAlive</key>
@@ -20,9 +18,18 @@
     <true/>
 
     <key>StandardOutPath</key>
-    <string>/c/Users/Admin/ExecutiveAssistant/logs/launchd_stdout.log</string>
+    <string>/Users/YOUR_USERNAME/ExecutiveAssistant/logs/launchd_stdout.log</string>
     <key>StandardErrorPath</key>
-    <string>/c/Users/Admin/ExecutiveAssistant/logs/launchd_stderr.log</string>
+    <string>/Users/YOUR_USERNAME/ExecutiveAssistant/logs/launchd_stderr.log</string>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/YOUR_USERNAME/executive-assistant</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>PATH</key>
+      <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin</string>
+    </dict>
 
   </dict>
 </plist>
