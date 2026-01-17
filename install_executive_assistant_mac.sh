@@ -911,28 +911,56 @@ if [[ "$SKIP_MODEL_PULL" != "yes" ]]; then
     
     # Debugging command to verify ollama environment first
     log "Checking Ollama version and CLI status..."
-    ollama --version || die "Ollama CLI unavailable. Ensure Ollama is properly installed and accessible."
-    
-    # Pull the 3B and 7B models with detailed error logging
-    log "Pulling Llama 3.2 3B model ($MODEL_3B)..."
-    if ! ollama pull "$MODEL_3B"; then
-      err "Failed to pull Llama 3.2 3B model: $MODEL_3B. Check if the model name is valid and try again."
+    if ! ollama --version; then
+      err "Ollama CLI unavailable. Ensure Ollama is properly installed and accessible."
+      log "You can manually pull models later with: ollama pull $MODEL_3B"
     else
-      log "Successfully pulled Llama 3.2 3B model: $MODEL_3B."
+      log "Ollama CLI OK: $(ollama --version 2>&1 | head -1)"
+      
+      # Pull the 3B model (required for AI NLP features)
+      log "Pulling Llama 3.2 3B model ($MODEL_3B) - this may take several minutes..."
+      if ollama pull "$MODEL_3B" 2>&1 | tee "$LOG_DIR/model_pull.log"; then
+        log "✓ Successfully pulled Llama 3.2 3B model: $MODEL_3B"
+      else
+        err "✗ Failed to pull Llama 3.2 3B model: $MODEL_3B"
+        err "Check logs: $LOG_DIR/model_pull.log"
+        err "You can manually pull it later with: ollama pull $MODEL_3B"
+      fi
+      
+      # Optional: Pull the 7B model if user confirms and has space
+      if (( FREE_GB >= 20 )) && confirm "Pull optional Mistral 7B model (requires ~4GB, better quality)? "; then
+        log "Pulling Mistral 7B model ($MODEL_7B)..."
+        if ollama pull "$MODEL_7B" 2>&1 | tee -a "$LOG_DIR/model_pull.log"; then
+          log "✓ Successfully pulled Mistral 7B model: $MODEL_7B"
+        else
+          err "✗ Failed to pull Mistral 7B model: $MODEL_7B"
+          log "This is optional - the 3B model should work fine."
+        fi
+      else
+        log "Skipping optional 7B model pull."
+      fi
+      
+      # Verify models were pulled successfully
+      log "Verifying installed models..."
+      if ollama list 2>&1 | tee "$LOG_DIR/ollama_list.log"; then
+        if ollama list | grep -q "$MODEL_3B"; then
+          log "✓ Confirmed: $MODEL_3B is installed and ready"
+        else
+          err "✗ Warning: $MODEL_3B not found in ollama list"
+          err "The server will attempt to auto-pull it on first use."
+        fi
+      else
+        err "Could not verify models with 'ollama list'"
+      fi
+      
+      log "Model installation logs saved to: $LOG_DIR/model_pull.log"
+      log "To check models anytime: ollama list"
     fi
-    
-    log "Pulling Mistral 7B model ($MODEL_7B)..."
-    if ! ollama pull "$MODEL_7B"; then
-      err "Failed to pull Mistral 7B model: $MODEL_7B. Check if the model name is valid and try again."
-    else
-      log "Successfully pulled Mistral 7B model: $MODEL_7B."
-    fi
-    
-    # List models for verification
-    try ollama list || log "Warning: Unable to verify pulled models with 'ollama list'."
   fi
 else
   log "SKIP_MODEL_PULL=yes - skipping model downloads as requested."
+  log "Note: You'll need to manually pull a model for AI features:"
+  log "  ollama pull llama3.2:3b"
 fi
 
 # 10) Install launchd plist so server runs at login (per-user)
@@ -988,7 +1016,22 @@ log " - Repo: $REPO_DIR"
 log " - Data dir: $DATA_DIR"
 log " - Email accounts file: $EMAIL_FILE"
 log " - Models pulled (if not skipped): $MODEL_3B , $MODEL_7B"
-log " - To view logs: $LOG_DIR"
+log " - Log directory: $LOG_DIR"
 log ""
-log "If anything fails, copy the exact Terminal output or $LOG_DIR/* and send it back for troubleshooting."
+log "📋 TROUBLESHOOTING COMMANDS:"
+log "  Check server logs:    tail -50 $LOG_DIR/server_stderr.log"
+log "  Check Ollama logs:    tail -50 $LOG_DIR/ollama_stderr.log"
+log "  Check model pull:     tail -50 $LOG_DIR/model_pull.log"
+log "  List installed models: ollama list"
+log "  Check if server up:    curl http://127.0.0.1:8001/health"
+log "  Check Ollama health:   curl http://127.0.0.1:11434/api/tags"
+log ""
+log "🔧 IF AI FEATURES DON'T WORK:"
+log "  1. Check if Ollama is running: pgrep -f 'ollama serve'"
+log "  2. Start Ollama if needed: ollama serve"
+log "  3. Pull model if missing: ollama pull llama3.2:3b"
+log "  4. Restart server: launchctl unload $LAUNCH_PLIST_USER && launchctl load $LAUNCH_PLIST_USER"
+log ""
+log "For detailed help, see: $REPO_DIR/INSTALLATION_GUIDE.md"
+log "If anything fails, copy the exact Terminal output or $LOG_DIR/* for troubleshooting."
 exit 0

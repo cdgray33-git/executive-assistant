@@ -58,8 +58,75 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Ollama adapter instance
+# Ollama adapter instance with model validation
 ollama = OllamaAdapter()
+
+# Check and auto-pull models at startup
+async def ensure_ollama_models():
+    """Ensure required Ollama models are available, pull if missing."""
+    import subprocess
+    
+    required_models = ["llama3.2:3b", "llama2"]
+    default_model = "llama3.2:3b"
+    
+    try:
+        # Check if Ollama is running
+        if not await ollama.ping():
+            logger.warning("Ollama is not running. Start with: ollama serve")
+            return False
+        
+        # List available models
+        result = subprocess.run(["ollama", "list"], capture_output=True, text=True, timeout=10)
+        available_models = result.stdout
+        
+        logger.info(f"Available Ollama models:\n{available_models}")
+        
+        # Check if we have at least one required model
+        has_model = False
+        for model in required_models:
+            if model in available_models:
+                has_model = True
+                logger.info(f"✓ Model {model} is available")
+                break
+        
+        if not has_model:
+            logger.warning(f"No required models found. Attempting to pull {default_model}...")
+            pull_result = subprocess.run(["ollama", "pull", default_model], 
+                                        capture_output=True, text=True, timeout=300)
+            if pull_result.returncode == 0:
+                logger.info(f"✓ Successfully pulled {default_model}")
+                return True
+            else:
+                logger.error(f"✗ Failed to pull {default_model}: {pull_result.stderr}")
+                return False
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error checking Ollama models: {e}")
+        return False
+
+# Store model check result
+ollama_models_ready = False
+
+@app.on_event("startup")
+async def startup_event():
+    """Check Ollama models at startup and auto-pull if needed."""
+    global ollama_models_ready
+    logger.info("=" * 60)
+    logger.info("Executive Assistant Server Starting...")
+    logger.info("=" * 60)
+    logger.info("Checking Ollama models...")
+    ollama_models_ready = await ensure_ollama_models()
+    if ollama_models_ready:
+        logger.info("✓ Ollama models ready for AI-powered NLP")
+    else:
+        logger.warning("✗ Ollama models not available - will use pattern matching fallback")
+        logger.warning("To enable AI features:")
+        logger.warning("  1. Start Ollama: ollama serve")
+        logger.warning("  2. Pull a model: ollama pull llama3.2:3b")
+        logger.warning("  3. Check logs: ~/ExecutiveAssistant/logs/server_stderr.log")
+    logger.info("=" * 60)
 
 # Mount static files for UI
 ui_dir = os.path.join(parent_dir, "ui")
@@ -257,7 +324,12 @@ async def interpret_with_llm(prompt: str, ollama_adapter: OllamaAdapter) -> Dict
     try:
         # Check if Ollama is available
         if not await ollama_adapter.ping():
-            return {"error": "Ollama not available"}
+            logger.warning("Ollama LLM not available - falling back to pattern matching")
+            logger.warning("To enable AI-powered NLP:")
+            logger.warning("  1. Open a terminal and run: ollama serve")
+            logger.warning("  2. Pull a model: ollama pull llama3.2:3b")
+            logger.warning("  3. Restart the Executive Assistant")
+            return {"error": "Ollama LLM is currently unavailable. Please try again or use specific phrases above"}
         
         # Create a structured prompt for the LLM
         system_prompt = """You are an intent classifier for an Executive Assistant. 
@@ -295,8 +367,22 @@ Respond ONLY with valid JSON, no other text:
         
         user_prompt = f"{system_prompt}\n\nUser request: {prompt}"
         
-        # Call Ollama generate
-        result = await ollama_adapter.generate(model="llama2", prompt=user_prompt, stream=False)
+        # Try with llama3.2:3b first, fallback to llama2
+        models_to_try = ["llama3.2:3b", "llama2"]
+        result = None
+        
+        for model in models_to_try:
+            try:
+                # Call Ollama generate
+                result = await ollama_adapter.generate(model=model, prompt=user_prompt, stream=False)
+                if result and result.get("response"):
+                    break
+            except Exception as e:
+                logger.warning(f"Failed to use model {model}: {e}")
+                continue
+        
+        if not result or not result.get("response"):
+            return {"error": "No Ollama models available. Please pull llama3.2:3b or llama2"}
         
         # Extract JSON from response
         response_text = result.get("response", "").strip()
@@ -316,6 +402,7 @@ Respond ONLY with valid JSON, no other text:
         
     except Exception as e:
         logger.error(f"LLM interpretation error: {e}")
+        logger.error("To check logs: tail -50 ~/ExecutiveAssistant/logs/server_stderr.log")
         return {"error": str(e)}
 
 
