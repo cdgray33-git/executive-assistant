@@ -944,14 +944,28 @@ async def handle_create_document(params: Dict) -> Dict:
     """Handle document creation intent."""
     try:
         doc_type = params.get("doc_type", "report")
-        title = params.get("title", "Document")
-        content = params.get("content", "Document content")
+        title = params.get("title", params.get("subject", "Document"))
+        content = params.get("content", params.get("message", ""))
+        
+        # If no meaningful content provided, generate placeholder
+        if not content or content == "Document content":
+            content = f"This {doc_type} document needs content.\n\n" + \
+                     f"Document Type: {doc_type.title()}\n" + \
+                     f"Title: {title}\n\n" + \
+                     "Please provide the actual content for this document."
         
         result = await write_document(doc_type=doc_type, title=title, content=content)
-        return {"response": result.get("response", "Document created successfully")}
+        
+        # Provide more detailed response
+        if "file" in result:
+            return {"response": f"✓ {doc_type.title()} created: {title}\n" + 
+                               f"📄 File: {result['file']}\n\n" + 
+                               f"The document has been saved and is ready to use."}
+        else:
+            return {"response": result.get("response", "Document created successfully")}
     except Exception as e:
         logger.error(f"Error handling create_document: {e}")
-        return {"error": str(e)}
+        return {"response": f"Error creating document: {str(e)}"}
 
 
 async def handle_take_note(params: Dict) -> Dict:
@@ -983,18 +997,32 @@ async def handle_view_notes(params: Dict) -> Dict:
 async def handle_view_emails(params: Dict) -> Dict:
     """Handle email viewing intent."""
     try:
-        max_messages = params.get("max_messages", 5)
+        # Extract count parameter from various possible keys
+        max_messages = params.get("count", params.get("max_messages", params.get("limit", 5)))
+        if isinstance(max_messages, str):
+            # Try to extract number from string like "7 emails" or "last 5"
+            import re
+            match = re.search(r'\d+', max_messages)
+            if match:
+                max_messages = int(match.group())
+            else:
+                max_messages = 5
         
         # Get first email account
         accounts = _load_email_accounts()
         if not accounts:
-            return {"error": "No email accounts configured"}
+            return {"response": "No email accounts configured. Please set up an email account first."}
         
         account_id = list(accounts.keys())[0]
         result = await fetch_unread_emails(account_id=account_id, max_messages=max_messages)
         
-        if "emails" in result:
-            emails = result["emails"]
+        # Check for error first
+        if "error" in result:
+            return {"response": f"Could not fetch emails: {result['error']}"}
+        
+        # fetch_unread_emails returns "messages" key, not "emails"
+        if "messages" in result:
+            emails = result["messages"]
             if not emails:
                 return {"response": "No unread emails found"}
             
@@ -1010,10 +1038,10 @@ async def handle_view_emails(params: Dict) -> Dict:
             
             return {"response": response}
         
-        return {"response": result.get("response", "Could not fetch emails")}
+        return {"response": "Could not fetch emails"}
     except Exception as e:
         logger.error(f"Error handling view_emails: {e}")
-        return {"error": str(e)}
+        return {"response": f"Error fetching emails: {str(e)}"}
 
 
 async def handle_delete_spam(params: Dict) -> Dict:
