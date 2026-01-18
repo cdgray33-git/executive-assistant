@@ -51,6 +51,12 @@ for directory in [NOTES_DIR, os.path.dirname(CALENDAR_FILE), os.path.dirname(CON
                   OUTPUT_DIR, PPTX_OUTPUT_DIR, DOCX_OUTPUT_DIR, PDF_OUTPUT_DIR]:
     os.makedirs(directory, exist_ok=True)
 
+# Configuration constants
+SPAM_SCORE_THRESHOLD = 5  # X-Spam-Score threshold for spam detection
+EMAIL_BATCH_SIZE = 100  # Number of emails to process in a single batch
+CONTENT_PREVIEW_LENGTH = 300  # Length of email preview text
+OLD_PROMOTIONS_DAYS = 365  # Days threshold for old promotions cleanup
+
 # Initialize files if missing
 if not os.path.exists(CALENDAR_FILE):
     with open(CALENDAR_FILE, "w") as f:
@@ -156,7 +162,7 @@ def _is_spam(msg: email.message.Message) -> bool:
             match = re.search(r'[-+]?\d*\.?\d+', spam_score)
             if match:
                 score_val = abs(float(match.group()))
-                if score_val > 5:
+                if score_val > SPAM_SCORE_THRESHOLD:
                     return True
         except (ValueError, AttributeError):
             pass  # Invalid spam score format, continue with other checks
@@ -550,7 +556,7 @@ async def bulk_delete_emails(account_id, criteria: Dict, dry_run=True, **kwargs)
     return await asyncio.to_thread(_sync)
 
 
-async def categorize_emails(account_id, max_messages=100, dry_run=True, **kwargs):
+async def categorize_emails(account_id, max_messages=EMAIL_BATCH_SIZE, dry_run=True, **kwargs):
     """
     Auto-categorize emails into folders.
     Creates folders if they don't exist.
@@ -615,7 +621,7 @@ async def categorize_emails(account_id, max_messages=100, dry_run=True, **kwargs
     return await asyncio.to_thread(_sync)
 
 
-async def detect_spam(account_id, max_messages=100, delete=False, dry_run=True, **kwargs):
+async def detect_spam(account_id, max_messages=EMAIL_BATCH_SIZE, delete=False, dry_run=True, **kwargs):
     """
     Detect spam emails and optionally delete them.
     """
@@ -687,13 +693,13 @@ async def cleanup_inbox(account_id, dry_run=True, **kwargs):
     results["spam_cleanup"] = spam_result
     
     # Step 2: Categorize emails
-    cat_result = await categorize_emails(account_id, max_messages=100, dry_run=dry_run)
+    cat_result = await categorize_emails(account_id, max_messages=EMAIL_BATCH_SIZE, dry_run=dry_run)
     results["categorization"] = cat_result
     
     # Step 3: Delete old promotions
     promo_result = await bulk_delete_emails(
         account_id,
-        criteria={"older_than_days": 365, "folder": "Promotions"},
+        criteria={"older_than_days": OLD_PROMOTIONS_DAYS, "folder": "Promotions"},
         dry_run=dry_run
     )
     results["old_promotions_cleanup"] = promo_result
@@ -1014,9 +1020,9 @@ async def handle_create_document(params: Dict) -> Dict:
         response += "Content Preview:\n"
         response += "─" * 50 + "\n"
         
-        # Show first 300 characters of content
-        preview_content = content[:300].strip()
-        if len(content) > 300:
+        # Show first N characters of content
+        preview_content = content[:CONTENT_PREVIEW_LENGTH].strip()
+        if len(content) > CONTENT_PREVIEW_LENGTH:
             preview_content += "..."
         response += preview_content + "\n"
         response += "─" * 50 + "\n\n"
