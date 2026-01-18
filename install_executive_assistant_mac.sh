@@ -546,12 +546,23 @@ async def list_email_accounts(**kwargs):
     accounts = _read_accounts()
     return {"accounts": list(accounts.keys()), "count": len(accounts)}
 
-async def fetch_unread_emails(account_id, max_messages=10, **kwargs):
+async def fetch_unread_emails(account_id=None, max_messages=10, **kwargs):
     def _sync():
         accounts = _read_accounts()
-        acct = accounts.get(account_id)
+        
+        # Auto-select account if not provided
+        if not account_id:
+            if not accounts:
+                return {"error": "No email accounts configured. Add an account first."}
+            # Use the first available account
+            selected_id = list(accounts.keys())[0]
+            logger.info(f"No account_id provided, using first account: {selected_id}")
+        else:
+            selected_id = account_id
+            
+        acct = accounts.get(selected_id)
         if not acct:
-            return {"error": f"Account {account_id} not found", "available": list(accounts.keys())}
+            return {"error": f"Account {selected_id} not found", "available": list(accounts.keys())}
         host = acct["imap_host"]; port = int(acct.get("imap_port",993)); use_ssl = acct.get("use_ssl", True)
         username = acct["username"]; password = acct["password"]
         try:
@@ -597,11 +608,11 @@ async def fetch_unread_emails(account_id, max_messages=10, **kwargs):
                     logger.debug(f"Error fetching email {uid}: {e}")
                     continue
             M.logout()
-            return {"messages": results, "count": len(results)}
+            return {"messages": results, "count": len(results), "account": selected_id}
         except imaplib.IMAP4.error as e:
-            return {"error": f"IMAP error: {str(e)}"}
+            return {"error": f"IMAP error: {str(e)}", "account": selected_id, "suggestion": "Check email credentials or app password settings"}
         except Exception as e:
-            return {"error": f"Unexpected error: {str(e)}"}
+            return {"error": f"Unexpected error: {str(e)}", "account": selected_id}
     return await asyncio.to_thread(_sync)
 
 async def mark_email_read(account_id, uid, **kwargs):
@@ -626,13 +637,24 @@ async def mark_email_read(account_id, uid, **kwargs):
             return {"error": str(e)}
     return await asyncio.to_thread(_sync)
 
-async def view_emails(account_id, max_messages=10, **kwargs):
+async def view_emails(account_id=None, max_messages=10, **kwargs):
     """Fetch recent emails (both read and unread) from inbox."""
     def _sync():
         accounts = _read_accounts()
-        acct = accounts.get(account_id)
+        
+        # Auto-select account if not provided
+        if not account_id:
+            if not accounts:
+                return {"error": "No email accounts configured. Add an account first."}
+            # Use the first available account
+            selected_id = list(accounts.keys())[0]
+            logger.info(f"No account_id provided, using first account: {selected_id}")
+        else:
+            selected_id = account_id
+            
+        acct = accounts.get(selected_id)
         if not acct:
-            return {"error": f"Account {account_id} not found", "available": list(accounts.keys())}
+            return {"error": f"Account {selected_id} not found", "available": list(accounts.keys())}
         host = acct["imap_host"]; port = int(acct.get("imap_port",993)); use_ssl = acct.get("use_ssl", True)
         username = acct["username"]; password = acct["password"]
         try:
@@ -688,20 +710,31 @@ async def view_emails(account_id, max_messages=10, **kwargs):
                     continue
             M.logout()
             unread_count = sum(1 for r in results if not r.get("is_read", True))
-            return {"messages": results, "count": len(results), "unread_count": unread_count}
+            return {"messages": results, "count": len(results), "unread_count": unread_count, "account": selected_id}
         except imaplib.IMAP4.error as e:
-            return {"error": f"IMAP error: {str(e)}"}
+            return {"error": f"IMAP error: {str(e)}", "account": selected_id, "suggestion": "Check email credentials or app password settings"}
         except Exception as e:
-            return {"error": f"Unexpected error: {str(e)}"}
+            return {"error": f"Unexpected error: {str(e)}", "account": selected_id}
     return await asyncio.to_thread(_sync)
 
-async def search_emails(account_id, from_email=None, subject=None, max_messages=50, **kwargs):
+async def search_emails(account_id=None, from_email=None, subject=None, max_messages=50, **kwargs):
     """Search for emails by sender and/or subject. Supports partial matching."""
     def _sync():
         accounts = _read_accounts()
-        acct = accounts.get(account_id)
+        
+        # Auto-select account if not provided
+        if not account_id:
+            if not accounts:
+                return {"error": "No email accounts configured. Add an account first."}
+            # Use the first available account
+            selected_id = list(accounts.keys())[0]
+            logger.info(f"No account_id provided, using first account: {selected_id}")
+        else:
+            selected_id = account_id
+            
+        acct = accounts.get(selected_id)
         if not acct:
-            return {"error": f"Account {account_id} not found", "available": list(accounts.keys())}
+            return {"error": f"Account {selected_id} not found", "available": list(accounts.keys())}
         host = acct["imap_host"]; port = int(acct.get("imap_port",993)); use_ssl = acct.get("use_ssl", True)
         username = acct["username"]; password = acct["password"]
         try:
@@ -779,11 +812,11 @@ async def search_emails(account_id, from_email=None, subject=None, max_messages=
                     logger.debug(f"Error fetching email {uid}: {e}")
                     continue
             M.logout()
-            return {"messages": results, "count": len(results), "search_criteria": {"from": from_email, "subject": subject}}
+            return {"messages": results, "count": len(results), "search_criteria": {"from": from_email, "subject": subject}, "account": selected_id}
         except imaplib.IMAP4.error as e:
-            return {"error": f"IMAP error: {str(e)}"}
+            return {"error": f"IMAP error: {str(e)}", "account": selected_id, "suggestion": "Check email credentials or app password settings"}
         except Exception as e:
-            return {"error": f"Unexpected error: {str(e)}"}
+            return {"error": f"Unexpected error: {str(e)}", "account": selected_id}
     return await asyncio.to_thread(_sync)
 
 async def send_email(account_id, to, subject, body, **kwargs):
