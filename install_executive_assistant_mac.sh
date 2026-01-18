@@ -97,6 +97,38 @@ if (( FREE_GB < 10 )); then
   if ! confirm "Proceed anyway?"; then die "Aborted due to low disk space."; fi
 fi
 
+# 0) Clean up any existing installations and services FIRST
+log "Cleaning up any existing Executive Assistant installations..."
+
+# Stop and unload any running launchd services
+if [[ -f "$LAUNCH_PLIST_USER" ]]; then
+  log "Found existing launchd service, stopping it..."
+  launchctl unload "$LAUNCH_PLIST_USER" 2>/dev/null || log "  (service was not loaded)"
+  rm -f "$LAUNCH_PLIST_USER"
+  log "  Removed old launchd plist"
+fi
+
+# Kill any running server processes
+log "Stopping any running Executive Assistant server processes..."
+pgrep -f "uvicorn.*executive.*assistant" | xargs kill -9 2>/dev/null || true
+pgrep -f "python.*server.*app.py" | xargs kill -9 2>/dev/null || true
+pgrep -f "run_server.sh" | xargs kill -9 2>/dev/null || true
+sleep 2
+
+# Remove old installation directories
+if [[ -d "$REPO_DIR" ]]; then
+  log "Removing old installation at $REPO_DIR..."
+  rm -rf "$REPO_DIR" || die "Failed to remove old installation directory"
+fi
+
+# Clean up old virtual environment
+if [[ -d "$VENV_DIR" ]]; then
+  log "Removing old virtual environment at $VENV_DIR..."
+  rm -rf "$VENV_DIR" || log "  Warning: Could not remove old venv"
+fi
+
+log "Cleanup complete. Starting fresh installation..."
+
 # 1) Download & install repository into $REPO_DIR (fresh copy)
 log "Downloading repository archive and installing to $REPO_DIR..."
 TMP_ZIP="/tmp/ea_main.zip"
@@ -991,12 +1023,34 @@ fi
 log "Opening browser to the Assistant UI: http://127.0.0.1:${PORT}/"
 open "http://127.0.0.1:${PORT}/" || true
 
+# Verify UI files are in place
+log "Verifying installation..."
+CHAT_UI="$REPO_DIR/ui/chat.html"
+if [[ -f "$CHAT_UI" ]]; then
+  log "✓ Chat UI found: $CHAT_UI"
+  log "  File size: $(ls -lh "$CHAT_UI" | awk '{print $5}')"
+else
+  err "✗ WARNING: Chat UI not found at $CHAT_UI"
+  err "  The browser interface may not work correctly!"
+fi
+
+if [[ -f "$REPO_DIR/server/assistant_functions.py" ]]; then
+  FUNC_LINES=$(wc -l < "$REPO_DIR/server/assistant_functions.py")
+  log "✓ Email functions found: $FUNC_LINES lines"
+else
+  err "✗ WARNING: Email functions not found!"
+fi
+
 log "INSTALL COMPLETE"
 log " - Repo: $REPO_DIR"
 log " - Data dir: $DATA_DIR"
 log " - Email accounts file: $EMAIL_FILE"
 log " - Models pulled (if not skipped): $MODEL_3B , $MODEL_7B"
 log " - To view logs: $LOG_DIR"
+log " - UI interface: http://127.0.0.1:${PORT}/"
+log ""
+log "The browser should open automatically. If you see a plain UI,"
+log "try force-refreshing your browser (Cmd+Shift+R on Mac) to clear cache."
 log ""
 log "If anything fails, copy the exact Terminal output or $LOG_DIR/* and send it back for troubleshooting."
 exit 0
