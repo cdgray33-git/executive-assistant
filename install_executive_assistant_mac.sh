@@ -410,6 +410,11 @@ FUNCTION_REGISTRY = {
     "fetch_unread_emails": {"description":"Fetch only unread emails", "parameters":["account_id","max_messages"]},
     "mark_email_read": {"description":"Mark email read", "parameters":["account_id","uid"]},
     "send_email": {"description":"Send an email", "parameters":["account_id","to","subject","body"]},
+    "list_folders": {"description":"List all email folders/mailboxes in the account", "parameters":["account_id"]},
+    "create_folder": {"description":"Create a new email folder/mailbox for organizing emails", "parameters":["account_id","folder_name"]},
+    "move_to_folder": {"description":"Move specific emails to a folder by their UIDs", "parameters":["account_id","uids","folder_name"]},
+    "detect_spam": {"description":"Detect potential spam emails using heuristics (does not delete, only identifies)", "parameters":["account_id","max_check"]},
+    "move_to_trash": {"description":"Move emails to trash folder (soft delete, recoverable)", "parameters":["account_id","uids"]},
     "summarize_text": {"description":"Summarize text", "parameters":["text"]}
 }
 
@@ -864,6 +869,273 @@ async def send_email(account_id, to, subject, body, **kwargs):
             return {"error": str(e)}
     return await asyncio.to_thread(_sync)
 
+async def list_folders(account_id=None, **kwargs):
+    """List all IMAP folders/mailboxes."""
+    def _sync():
+        accounts = _read_accounts()
+        if not account_id:
+            if not accounts:
+                return {"error": "No email accounts configured"}
+            selected_id = list(accounts.keys())[0]
+        else:
+            selected_id = account_id
+        acct = accounts.get(selected_id)
+        if not acct:
+            return {"error": f"Account {selected_id} not found"}
+        host = acct["imap_host"]; port = int(acct.get("imap_port",993)); use_ssl = acct.get("use_ssl", True)
+        username = acct["username"]; password = acct["password"]
+        try:
+            if use_ssl:
+                M = imaplib.IMAP4_SSL(host, port, timeout=30)
+            else:
+                M = imaplib.IMAP4(host, port, timeout=30)
+            M.login(username, password)
+            typ, folders = M.list()
+            folder_list = []
+            if folders:
+                for folder in folders:
+                    if folder:
+                        folder_list.append(folder.decode() if isinstance(folder, bytes) else str(folder))
+            M.logout()
+            return {"folders": folder_list, "count": len(folder_list), "account": selected_id}
+        except Exception as e:
+            return {"error": f"Error listing folders: {str(e)}"}
+    return await asyncio.to_thread(_sync)
+
+async def create_folder(account_id=None, folder_name=None, **kwargs):
+    """Create a new IMAP folder/mailbox."""
+    def _sync():
+        if not folder_name:
+            return {"error": "folder_name parameter is required"}
+        accounts = _read_accounts()
+        if not account_id:
+            if not accounts:
+                return {"error": "No email accounts configured"}
+            selected_id = list(accounts.keys())[0]
+        else:
+            selected_id = account_id
+        acct = accounts.get(selected_id)
+        if not acct:
+            return {"error": f"Account {selected_id} not found"}
+        host = acct["imap_host"]; port = int(acct.get("imap_port",993)); use_ssl = acct.get("use_ssl", True)
+        username = acct["username"]; password = acct["password"]
+        try:
+            if use_ssl:
+                M = imaplib.IMAP4_SSL(host, port, timeout=30)
+            else:
+                M = imaplib.IMAP4(host, port, timeout=30)
+            M.login(username, password)
+            M.create(folder_name)
+            M.logout()
+            return {"message": f"Created folder '{folder_name}'", "folder": folder_name, "account": selected_id}
+        except Exception as e:
+            return {"error": f"Error creating folder: {str(e)}"}
+    return await asyncio.to_thread(_sync)
+
+async def move_to_folder(account_id=None, uids=None, folder_name=None, **kwargs):
+    """Move emails to a specific folder."""
+    def _sync():
+        if not uids:
+            return {"error": "uids parameter is required (list of email UIDs)"}
+        if not folder_name:
+            return {"error": "folder_name parameter is required"}
+        accounts = _read_accounts()
+        if not account_id:
+            if not accounts:
+                return {"error": "No email accounts configured"}
+            selected_id = list(accounts.keys())[0]
+        else:
+            selected_id = account_id
+        acct = accounts.get(selected_id)
+        if not acct:
+            return {"error": f"Account {selected_id} not found"}
+        host = acct["imap_host"]; port = int(acct.get("imap_port",993)); use_ssl = acct.get("use_ssl", True)
+        username = acct["username"]; password = acct["password"]
+        try:
+            if use_ssl:
+                M = imaplib.IMAP4_SSL(host, port, timeout=30)
+            else:
+                M = imaplib.IMAP4(host, port, timeout=30)
+            M.login(username, password)
+            M.select("INBOX")
+            moved_count = 0
+            for uid in uids:
+                try:
+                    M.copy(str(uid), folder_name)
+                    M.store(str(uid), '+FLAGS', '\\Deleted')
+                    moved_count += 1
+                except Exception as e:
+                    logger.debug(f"Error moving UID {uid}: {e}")
+            M.expunge()
+            M.logout()
+            return {"message": f"Moved {moved_count} email(s) to '{folder_name}'", "moved_count": moved_count, "folder": folder_name, "account": selected_id}
+        except Exception as e:
+            return {"error": f"Error moving emails: {str(e)}"}
+    return await asyncio.to_thread(_sync)
+
+async def detect_spam(account_id=None, max_check=100, **kwargs):
+    """Detect potential spam emails using heuristics (no deletion)."""
+    def _sync():
+        accounts = _read_accounts()
+        if not account_id:
+            if not accounts:
+                return {"error": "No email accounts configured"}
+            selected_id = list(accounts.keys())[0]
+        else:
+            selected_id = account_id
+        acct = accounts.get(selected_id)
+        if not acct:
+            return {"error": f"Account {selected_id} not found"}
+        host = acct["imap_host"]; port = int(acct.get("imap_port",993)); use_ssl = acct.get("use_ssl", True)
+        username = acct["username"]; password = acct["password"]
+        
+        # Common spam patterns
+        spam_keywords = ['viagra', 'cialis', 'lottery', 'winner', 'casino', 'pills', 'enlarge', 'weight loss', 'make money fast', 'click here', 'buy now']
+        spam_domains = ['example-spam.com']  # Add known spam domains
+        
+        try:
+            if use_ssl:
+                M = imaplib.IMAP4_SSL(host, port, timeout=30)
+            else:
+                M = imaplib.IMAP4(host, port, timeout=30)
+            M.login(username, password)
+            M.select("INBOX")
+            typ, data = M.search(None, "ALL")
+            uids = data[0].split() if data and data[0] else []
+            uids = uids[-int(max_check):]  # Check last N emails
+            
+            spam_candidates = []
+            for uid in uids:
+                try:
+                    typ, msg_data = M.fetch(uid, "(RFC822.HEADER)")
+                    if not msg_data or not msg_data[0]:
+                        continue
+                    raw = msg_data[0][1]
+                    msg = email.message_from_bytes(raw)
+                    subject = _decode_header(msg.get("Subject","")).lower()
+                    frm = _decode_header(msg.get("From","")).lower()
+                    
+                    # Spam detection heuristics
+                    spam_score = 0
+                    reasons = []
+                    
+                    # Check subject for spam keywords
+                    for keyword in spam_keywords:
+                        if keyword in subject:
+                            spam_score += 2
+                            reasons.append(f"spam keyword in subject: {keyword}")
+                    
+                    # Check sender domain
+                    for domain in spam_domains:
+                        if domain in frm:
+                            spam_score += 3
+                            reasons.append(f"spam domain: {domain}")
+                    
+                    # Excessive caps in subject
+                    if subject and subject.isupper() and len(subject) > 10:
+                        spam_score += 1
+                        reasons.append("all caps subject")
+                    
+                    # Multiple exclamation marks
+                    if subject.count('!') > 2:
+                        spam_score += 1
+                        reasons.append("excessive exclamation marks")
+                    
+                    if spam_score >= 2:  # Threshold for spam
+                        spam_candidates.append({
+                            "uid": uid.decode() if isinstance(uid, bytes) else str(uid),
+                            "from": frm,
+                            "subject": _decode_header(msg.get("Subject","")),
+                            "spam_score": spam_score,
+                            "reasons": reasons
+                        })
+                except Exception as e:
+                    logger.debug(f"Error checking UID {uid}: {e}")
+            
+            M.logout()
+            return {
+                "spam_candidates": spam_candidates,
+                "count": len(spam_candidates),
+                "checked": len(uids),
+                "account": selected_id,
+                "message": f"Found {len(spam_candidates)} potential spam email(s) out of {len(uids)} checked. Review before deletion."
+            }
+        except Exception as e:
+            return {"error": f"Error detecting spam: {str(e)}"}
+    return await asyncio.to_thread(_sync)
+
+async def move_to_trash(account_id=None, uids=None, **kwargs):
+    """Move emails to Trash folder (soft delete, recoverable)."""
+    def _sync():
+        if not uids:
+            return {"error": "uids parameter is required (list of email UIDs)"}
+        accounts = _read_accounts()
+        if not account_id:
+            if not accounts:
+                return {"error": "No email accounts configured"}
+            selected_id = list(accounts.keys())[0]
+        else:
+            selected_id = account_id
+        acct = accounts.get(selected_id)
+        if not acct:
+            return {"error": f"Account {selected_id} not found"}
+        host = acct["imap_host"]; port = int(acct.get("imap_port",993)); use_ssl = acct.get("use_ssl", True)
+        username = acct["username"]; password = acct["password"]
+        
+        # Try common trash folder names
+        trash_folders = ["Trash", "[Gmail]/Trash", "Deleted Items", "Deleted Messages"]
+        
+        try:
+            if use_ssl:
+                M = imaplib.IMAP4_SSL(host, port, timeout=30)
+            else:
+                M = imaplib.IMAP4(host, port, timeout=30)
+            M.login(username, password)
+            
+            # Find trash folder
+            typ, folders = M.list()
+            trash_folder = None
+            if folders:
+                for folder_data in folders:
+                    if folder_data:
+                        folder_str = folder_data.decode() if isinstance(folder_data, bytes) else str(folder_data)
+                        for trash_name in trash_folders:
+                            if trash_name in folder_str:
+                                # Extract folder name from response
+                                parts = folder_str.split('"')
+                                if len(parts) >= 4:
+                                    trash_folder = parts[-2]
+                                else:
+                                    trash_folder = trash_name
+                                break
+                    if trash_folder:
+                        break
+            
+            if not trash_folder:
+                trash_folder = "Trash"  # Default
+            
+            M.select("INBOX")
+            moved_count = 0
+            for uid in uids:
+                try:
+                    M.copy(str(uid), trash_folder)
+                    M.store(str(uid), '+FLAGS', '\\Deleted')
+                    moved_count += 1
+                except Exception as e:
+                    logger.debug(f"Error moving UID {uid} to trash: {e}")
+            M.expunge()
+            M.logout()
+            return {
+                "message": f"Moved {moved_count} email(s) to trash (recoverable)",
+                "moved_count": moved_count,
+                "trash_folder": trash_folder,
+                "account": selected_id,
+                "note": "Emails are in trash and can be recovered if needed"
+            }
+        except Exception as e:
+            return {"error": f"Error moving to trash: {str(e)}"}
+    return await asyncio.to_thread(_sync)
+
 # Router: execute function by name
 async def execute_function(function_name, arguments):
     mapping = {
@@ -880,6 +1152,11 @@ async def execute_function(function_name, arguments):
         "fetch_unread_emails": fetch_unread_emails,
         "mark_email_read": mark_email_read,
         "send_email": send_email,
+        "list_folders": list_folders,
+        "create_folder": create_folder,
+        "move_to_folder": move_to_folder,
+        "detect_spam": detect_spam,
+        "move_to_trash": move_to_trash,
         "summarize_text": summarize_text
     }
     fn = mapping.get(function_name)
