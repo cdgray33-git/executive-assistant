@@ -102,14 +102,56 @@ log "Downloading repository archive and installing to $REPO_DIR..."
 TMP_ZIP="/tmp/ea_main.zip"
 rm -f "$TMP_ZIP" || true
 curl -fsSL -o "$TMP_ZIP" "$REPO_ARCHIVE_URL" || die "Failed to download repo archive."
+
+# Verify the zip file was downloaded
+if [[ ! -f "$TMP_ZIP" ]]; then
+  die "Archive file not found after download: $TMP_ZIP"
+fi
+log "Downloaded archive: $(ls -lh "$TMP_ZIP" | awk '{print $5}')"
+
+# Clean up old extracted directories
 rm -rf /tmp/executive-assistant-* || true
-unzip -oq "$TMP_ZIP" -d /tmp || die "Failed to unzip repo archive."
+
+# Extract the archive
+log "Extracting archive..."
+if ! unzip -oq "$TMP_ZIP" -d /tmp; then
+  die "Failed to unzip repo archive."
+fi
+log "Archive extracted to /tmp"
 
 # Find the extracted directory (handle any branch name)
-EXTRACTED_DIR=$(find /tmp -maxdepth 1 -name "executive-assistant-*" -type d | head -n 1)
-if [[ -z "$EXTRACTED_DIR" || ! -d "$EXTRACTED_DIR" ]]; then
-  die "Unexpected archive layout after unzip."
+# Try multiple methods to find the directory
+EXTRACTED_DIR=""
+
+# Method 1: Use find (works on most systems)
+EXTRACTED_DIR=$(find /tmp -maxdepth 1 -name "executive-assistant-*" -type d 2>/dev/null | head -n 1)
+
+# Method 2: If find didn't work, try ls with wildcard
+if [[ -z "$EXTRACTED_DIR" ]]; then
+  for dir in /tmp/executive-assistant-*; do
+    if [[ -d "$dir" ]]; then
+      EXTRACTED_DIR="$dir"
+      break
+    fi
+  done
 fi
+
+# Method 3: Check for specific known directory name patterns
+if [[ -z "$EXTRACTED_DIR" ]]; then
+  # For branch with slashes, GitHub converts them to dashes
+  if [[ -d "/tmp/executive-assistant-copilot-fix-email-management-issues" ]]; then
+    EXTRACTED_DIR="/tmp/executive-assistant-copilot-fix-email-management-issues"
+  fi
+fi
+
+if [[ -z "$EXTRACTED_DIR" || ! -d "$EXTRACTED_DIR" ]]; then
+  log "ERROR: Could not find extracted directory in /tmp"
+  log "Contents of /tmp (executive-assistant directories):"
+  ls -ld /tmp/executive-assistant-* 2>/dev/null || log "  No matching directories found"
+  die "Unexpected archive layout after unzip. Could not locate extracted directory."
+fi
+
+log "Found extracted directory: $EXTRACTED_DIR"
 
 rm -rf "$REPO_DIR" || true
 mv "$EXTRACTED_DIR" "$REPO_DIR" || die "Failed to move repo to $REPO_DIR"
