@@ -1236,7 +1236,7 @@ async def move_to_trash(account_id=None, uids=None, **kwargs):
             return {"error": f"Error moving to trash: {str(e)}"}
     return await asyncio.to_thread(_sync)
 
-async def move_spam_to_folder(account_id=None, days=None, max_check=100, folder_name="Spam", **kwargs):
+async def move_spam_to_folder(account_id=None, days=None, max_check=30, folder_name="Spam", **kwargs):
     """Detect spam and move to specified folder (creates folder if needed). Returns spam candidates for review."""
     def _sync():
         accounts = _read_accounts()
@@ -1314,8 +1314,21 @@ async def move_spam_to_folder(account_id=None, days=None, max_check=100, folder_
             if not days:
                 uids = uids[-int(max_check):]
             
+            logger.info(f"Checking {len(uids)} emails for spam...")
             spam_candidates = []
+            checked_count = 0
+            max_spam_batch = 50  # Stop after finding this many spam emails to avoid long processing
+            
             for uid in uids:
+                checked_count += 1
+                # Log progress every 10 emails
+                if checked_count % 10 == 0:
+                    logger.info(f"Progress: Checked {checked_count}/{len(uids)} emails, found {len(spam_candidates)} spam so far")
+                
+                # Stop if we've found enough spam in this batch
+                if len(spam_candidates) >= max_spam_batch:
+                    logger.info(f"Reached batch limit of {max_spam_batch} spam emails, stopping scan")
+                    break
                 try:
                     # Use BODY.PEEK[HEADER] to avoid marking emails as read during detection
                     typ, msg_data = M.uid('fetch', uid, "(BODY.PEEK[HEADER])")
