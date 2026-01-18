@@ -405,9 +405,9 @@ FUNCTION_REGISTRY = {
     "get_calendar": {"description":"Get calendar events", "parameters":["days"]},
     "add_contact": {"description":"Add contact", "parameters":["name","email","phone","notes"]},
     "search_contacts": {"description":"Search contacts", "parameters":["query"]},
-    "view_emails": {"description":"View recent emails (read and unread)", "parameters":["account_id","max_messages"]},
-    "search_emails": {"description":"Search emails by sender or subject", "parameters":["account_id","from_email","subject","max_messages"]},
-    "fetch_unread_emails": {"description":"Fetch unread emails", "parameters":["account_id","max_messages"]},
+    "view_emails": {"description":"View most recent emails chronologically (no filtering by sender/subject)", "parameters":["account_id","max_messages"]},
+    "search_emails": {"description":"Search/filter emails by specific sender email address or domain (use from_email parameter) or by subject keywords", "parameters":["account_id","from_email","subject","max_messages"]},
+    "fetch_unread_emails": {"description":"Fetch only unread emails", "parameters":["account_id","max_messages"]},
     "mark_email_read": {"description":"Mark email read", "parameters":["account_id","uid"]},
     "send_email": {"description":"Send an email", "parameters":["account_id","to","subject","body"]},
     "summarize_text": {"description":"Summarize text", "parameters":["text"]}
@@ -769,6 +769,10 @@ async def search_emails(account_id=None, from_email=None, subject=None, max_mess
             
             typ, data = M.search(None, search_criteria)
             uids = data[0].split() if data and data[0] else []
+            
+            # Log search results for debugging
+            logger.info(f"Search '{search_criteria}' found {len(uids)} messages")
+            
             uids = uids[-int(max_messages):]
             results=[]
             for uid in reversed(uids):
@@ -812,6 +816,23 @@ async def search_emails(account_id=None, from_email=None, subject=None, max_mess
                     logger.debug(f"Error fetching email {uid}: {e}")
                     continue
             M.logout()
+            
+            # Return informative message when no results found
+            if len(results) == 0:
+                search_desc = []
+                if from_email:
+                    search_desc.append(f"from '{from_email}'")
+                if subject:
+                    search_desc.append(f"subject containing '{subject}'")
+                search_text = " and ".join(search_desc) if search_desc else "matching criteria"
+                return {
+                    "messages": [],
+                    "count": 0,
+                    "search_criteria": {"from": from_email, "subject": subject},
+                    "account": selected_id,
+                    "message": f"No emails found {search_text}. The search was performed but returned no matches."
+                }
+            
             return {"messages": results, "count": len(results), "search_criteria": {"from": from_email, "subject": subject}, "account": selected_id}
         except imaplib.IMAP4.error as e:
             return {"error": f"IMAP error: {str(e)}", "account": selected_id, "suggestion": "Check email credentials or app password settings"}
