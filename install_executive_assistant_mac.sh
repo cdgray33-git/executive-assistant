@@ -670,13 +670,15 @@ async def view_emails(account_id=None, max_messages=10, **kwargs):
                 M = imaplib.IMAP4(host, port, timeout=30)
             M.login(username, password)
             M.select("INBOX")
-            typ, data = M.search(None, "ALL")
+            # Use UID search for consistent results even after deletions
+            typ, data = M.uid('search', None, "ALL")
             uids = data[0].split() if data and data[0] else []
             uids = uids[-int(max_messages):]
             results=[]
             for uid in reversed(uids):
                 try:
-                    typ, msg_data = M.fetch(uid, "(RFC822 FLAGS)")
+                    # Use BODY.PEEK to avoid marking emails as read
+                    typ, msg_data = M.uid('fetch', uid, "(BODY.PEEK[] FLAGS)")
                     if not msg_data or not msg_data[0]:
                         continue
                     raw = msg_data[0][1]
@@ -1315,7 +1317,8 @@ async def move_spam_to_folder(account_id=None, days=None, max_check=100, folder_
             spam_candidates = []
             for uid in uids:
                 try:
-                    typ, msg_data = M.uid('fetch', uid, "(RFC822.HEADER)")
+                    # Use BODY.PEEK[HEADER] to avoid marking emails as read during detection
+                    typ, msg_data = M.uid('fetch', uid, "(BODY.PEEK[HEADER])")
                     if not msg_data or not msg_data[0]:
                         continue
                     raw = msg_data[0][1]
@@ -1416,14 +1419,23 @@ async def move_spam_to_folder(account_id=None, days=None, max_check=100, folder_
             
             logger.info(f"Successfully moved {moved_count} emails to {folder_name}")
             
+            # Create detailed summary for user
+            moved_summary = []
+            for candidate in spam_candidates[:10]:  # Show first 10 in summary
+                moved_summary.append(f"• From: {candidate['from']}\n  Subject: {candidate['subject']}\n  Spam Score: {candidate['spam_score']} - {', '.join(candidate['reasons'])}")
+            
+            summary_text = "\n\n".join(moved_summary)
+            if len(spam_candidates) > 10:
+                summary_text += f"\n\n... and {len(spam_candidates) - 10} more emails"
+            
             return {
-                "message": f"Moved {moved_count} spam email(s) to '{folder_name}' folder",
+                "message": f"✅ Successfully moved {moved_count} spam email(s) to '{folder_name}' folder\n\nMoved emails:\n{summary_text}",
                 "spam_candidates": spam_candidates,
                 "count": len(spam_candidates),
                 "moved_count": moved_count,
                 "folder": folder_name,
                 "account": selected_id,
-                "note": f"Review the {moved_count} emails moved to '{folder_name}' folder. Emails can be recovered from there if needed."
+                "note": f"Check your '{folder_name}' folder to review the {moved_count} emails that were moved. You can recover any legitimate emails from there."
             }
         except Exception as e:
             logger.error(f"Error in move_spam_to_folder: {str(e)}")
