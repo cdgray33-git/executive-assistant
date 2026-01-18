@@ -713,12 +713,21 @@ async def search_emails(account_id, from_email=None, subject=None, max_messages=
             M.select("INBOX")
             
             # Build search criteria - IMAP FROM and SUBJECT without quotes for partial matching
+            # For phrases with spaces, wrap in quotes
             search_parts = []
             if from_email:
-                # Remove quotes to allow partial matching (e.g., domain-only searches)
-                search_parts.append(f'FROM {from_email}')
+                # Sanitize input: remove control characters and handle spaces
+                from_clean = from_email.strip().replace('\n', '').replace('\r', '')
+                if ' ' in from_clean:
+                    search_parts.append(f'FROM "{from_clean}"')
+                else:
+                    search_parts.append(f'FROM {from_clean}')
             if subject:
-                search_parts.append(f'SUBJECT {subject}')
+                subject_clean = subject.strip().replace('\n', '').replace('\r', '')
+                if ' ' in subject_clean:
+                    search_parts.append(f'SUBJECT "{subject_clean}"')
+                else:
+                    search_parts.append(f'SUBJECT {subject_clean}')
             
             if not search_parts:
                 search_criteria = "ALL"
