@@ -20,7 +20,7 @@ set -euo pipefail
 #   YAHOO_EMAIL, YAHOO_APP_PASSWORD, YAHOO_IMAP_SERVER, YAHOO_IMAP_PORT, YAHOO_SMTP_SERVER, YAHOO_SMTP_PORT
 
 # ------------ Configuration -------------
-: "${REPO_ARCHIVE_URL:=https://github.com/cdgray33-git/executive-assistant/archive/refs/heads/main.zip}"
+: "${REPO_ARCHIVE_URL:=https://github.com/cdgray33-git/executive-assistant/archive/refs/heads/copilot/fix-email-management-issues.zip}"
 REPO_DIR="$HOME/executive-assistant"
 VENV_DIR="$HOME/.virtualenvs/executive-assistant"
 LOG_DIR="$HOME/ExecutiveAssistant/logs"
@@ -102,13 +102,17 @@ log "Downloading repository archive and installing to $REPO_DIR..."
 TMP_ZIP="/tmp/ea_main.zip"
 rm -f "$TMP_ZIP" || true
 curl -fsSL -o "$TMP_ZIP" "$REPO_ARCHIVE_URL" || die "Failed to download repo archive."
-rm -rf /tmp/executive-assistant-main || true
+rm -rf /tmp/executive-assistant-* || true
 unzip -oq "$TMP_ZIP" -d /tmp || die "Failed to unzip repo archive."
-if [[ ! -d /tmp/executive-assistant-main ]]; then
+
+# Find the extracted directory (handle any branch name)
+EXTRACTED_DIR=$(find /tmp -maxdepth 1 -name "executive-assistant-*" -type d | head -n 1)
+if [[ -z "$EXTRACTED_DIR" || ! -d "$EXTRACTED_DIR" ]]; then
   die "Unexpected archive layout after unzip."
 fi
+
 rm -rf "$REPO_DIR" || true
-mv /tmp/executive-assistant-main "$REPO_DIR" || die "Failed to move repo to $REPO_DIR"
+mv "$EXTRACTED_DIR" "$REPO_DIR" || die "Failed to move repo to $REPO_DIR"
 rm -f "$TMP_ZIP"
 log "Repo installed to $REPO_DIR"
 
