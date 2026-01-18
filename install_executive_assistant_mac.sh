@@ -405,6 +405,8 @@ FUNCTION_REGISTRY = {
     "get_calendar": {"description":"Get calendar events", "parameters":["days"]},
     "add_contact": {"description":"Add contact", "parameters":["name","email","phone","notes"]},
     "search_contacts": {"description":"Search contacts", "parameters":["query"]},
+    "view_emails": {"description":"View recent emails (read and unread)", "parameters":["account_id","max_messages"]},
+    "search_emails": {"description":"Search emails by sender or subject", "parameters":["account_id","from_email","subject","max_messages"]},
     "fetch_unread_emails": {"description":"Fetch unread emails", "parameters":["account_id","max_messages"]},
     "mark_email_read": {"description":"Mark email read", "parameters":["account_id","uid"]},
     "send_email": {"description":"Send an email", "parameters":["account_id","to","subject","body"]},
@@ -544,19 +546,30 @@ async def list_email_accounts(**kwargs):
     accounts = _read_accounts()
     return {"accounts": list(accounts.keys()), "count": len(accounts)}
 
-async def fetch_unread_emails(account_id, max_messages=10, **kwargs):
+async def fetch_unread_emails(account_id=None, max_messages=10, **kwargs):
     def _sync():
         accounts = _read_accounts()
-        acct = accounts.get(account_id)
+        
+        # Auto-select account if not provided
+        if not account_id:
+            if not accounts:
+                return {"error": "No email accounts configured. Add an account first."}
+            # Use the first available account
+            selected_id = list(accounts.keys())[0]
+            logger.info(f"No account_id provided, using first account: {selected_id}")
+        else:
+            selected_id = account_id
+            
+        acct = accounts.get(selected_id)
         if not acct:
-            return {"error": f"Account {account_id} not found", "available": list(accounts.keys())}
+            return {"error": f"Account {selected_id} not found", "available": list(accounts.keys())}
         host = acct["imap_host"]; port = int(acct.get("imap_port",993)); use_ssl = acct.get("use_ssl", True)
         username = acct["username"]; password = acct["password"]
         try:
             if use_ssl:
-                M = imaplib.IMAP4_SSL(host, port)
+                M = imaplib.IMAP4_SSL(host, port, timeout=30)
             else:
-                M = imaplib.IMAP4(host, port)
+                M = imaplib.IMAP4(host, port, timeout=30)
             M.login(username, password)
             M.select("INBOX")
             typ, data = M.search(None, "UNSEEN")
@@ -564,36 +577,42 @@ async def fetch_unread_emails(account_id, max_messages=10, **kwargs):
             uids = uids[-int(max_messages):]
             results=[]
             for uid in reversed(uids):
-                typ, msg_data = M.fetch(uid, "(RFC822)")
-                raw = msg_data[0][1]
-                msg = email.message_from_bytes(raw)
-                subject = _decode_header(msg.get("Subject",""))
-                frm = _decode_header(msg.get("From",""))
-                date = msg.get("Date","")
-                body = ""
-                if msg.is_multipart():
-                    for part in msg.walk():
-                        ctype = part.get_content_type()
-                        disp = str(part.get("Content-Disposition"))
-                        if ctype == "text/plain" and "attachment" not in disp:
-                            try:
-                                body = part.get_payload(decode=True).decode(errors="replace")
-                            except Exception:
-                                body = str(part.get_payload())
-                            break
-                else:
-                    try:
-                        body = msg.get_payload(decode=True).decode(errors="replace")
-                    except Exception:
-                        body = str(msg.get_payload())
-                preview = " ".join(body.strip().splitlines())[:400] + ("..." if len(body)>400 else "")
-                results.append({"uid": uid.decode() if isinstance(uid, bytes) else str(uid), "from": frm, "subject": subject, "date": date, "preview": preview})
+                try:
+                    typ, msg_data = M.fetch(uid, "(RFC822)")
+                    if not msg_data or not msg_data[0]:
+                        continue
+                    raw = msg_data[0][1]
+                    msg = email.message_from_bytes(raw)
+                    subject = _decode_header(msg.get("Subject",""))
+                    frm = _decode_header(msg.get("From",""))
+                    date = msg.get("Date","")
+                    body = ""
+                    if msg.is_multipart():
+                        for part in msg.walk():
+                            ctype = part.get_content_type()
+                            disp = str(part.get("Content-Disposition"))
+                            if ctype == "text/plain" and "attachment" not in disp:
+                                try:
+                                    body = part.get_payload(decode=True).decode(errors="replace")
+                                except Exception:
+                                    body = str(part.get_payload())
+                                break
+                    else:
+                        try:
+                            body = msg.get_payload(decode=True).decode(errors="replace")
+                        except Exception:
+                            body = str(msg.get_payload())
+                    preview = " ".join(body.strip().splitlines())[:400] + ("..." if len(body)>400 else "")
+                    results.append({"uid": uid.decode() if isinstance(uid, bytes) else str(uid), "from": frm, "subject": subject, "date": date, "preview": preview})
+                except Exception as e:
+                    logger.debug(f"Error fetching email {uid}: {e}")
+                    continue
             M.logout()
-            return {"messages": results, "count": len(results)}
+            return {"messages": results, "count": len(results), "account": selected_id}
         except imaplib.IMAP4.error as e:
-            return {"error": f"IMAP error: {str(e)}"}
+            return {"error": f"IMAP error: {str(e)}", "account": selected_id, "suggestion": "Check email credentials or app password settings"}
         except Exception as e:
-            return {"error": f"Unexpected error: {str(e)}"}
+            return {"error": f"Unexpected error: {str(e)}", "account": selected_id}
     return await asyncio.to_thread(_sync)
 
 async def mark_email_read(account_id, uid, **kwargs):
@@ -616,6 +635,188 @@ async def mark_email_read(account_id, uid, **kwargs):
             return {"message": f"Marked {uid} as read"}
         except Exception as e:
             return {"error": str(e)}
+    return await asyncio.to_thread(_sync)
+
+async def view_emails(account_id=None, max_messages=10, **kwargs):
+    """Fetch recent emails (both read and unread) from inbox."""
+    def _sync():
+        accounts = _read_accounts()
+        
+        # Auto-select account if not provided
+        if not account_id:
+            if not accounts:
+                return {"error": "No email accounts configured. Add an account first."}
+            # Use the first available account
+            selected_id = list(accounts.keys())[0]
+            logger.info(f"No account_id provided, using first account: {selected_id}")
+        else:
+            selected_id = account_id
+            
+        acct = accounts.get(selected_id)
+        if not acct:
+            return {"error": f"Account {selected_id} not found", "available": list(accounts.keys())}
+        host = acct["imap_host"]; port = int(acct.get("imap_port",993)); use_ssl = acct.get("use_ssl", True)
+        username = acct["username"]; password = acct["password"]
+        try:
+            if use_ssl:
+                M = imaplib.IMAP4_SSL(host, port, timeout=30)
+            else:
+                M = imaplib.IMAP4(host, port, timeout=30)
+            M.login(username, password)
+            M.select("INBOX")
+            typ, data = M.search(None, "ALL")
+            uids = data[0].split() if data and data[0] else []
+            uids = uids[-int(max_messages):]
+            results=[]
+            for uid in reversed(uids):
+                try:
+                    typ, msg_data = M.fetch(uid, "(RFC822 FLAGS)")
+                    if not msg_data or not msg_data[0]:
+                        continue
+                    raw = msg_data[0][1]
+                    msg = email.message_from_bytes(raw)
+                    subject = _decode_header(msg.get("Subject",""))
+                    frm = _decode_header(msg.get("From",""))
+                    date = msg.get("Date","")
+                    flags = msg_data[1] if len(msg_data) > 1 else b''
+                    is_read = b'\\Seen' in flags if isinstance(flags, bytes) else '\\Seen' in str(flags)
+                    body = ""
+                    if msg.is_multipart():
+                        for part in msg.walk():
+                            ctype = part.get_content_type()
+                            disp = str(part.get("Content-Disposition"))
+                            if ctype == "text/plain" and "attachment" not in disp:
+                                try:
+                                    body = part.get_payload(decode=True).decode(errors="replace")
+                                except Exception:
+                                    body = str(part.get_payload())
+                                break
+                    else:
+                        try:
+                            body = msg.get_payload(decode=True).decode(errors="replace")
+                        except Exception:
+                            body = str(msg.get_payload())
+                    preview = " ".join(body.strip().splitlines())[:400] + ("..." if len(body)>400 else "")
+                    results.append({
+                        "uid": uid.decode() if isinstance(uid, bytes) else str(uid),
+                        "from": frm,
+                        "subject": subject,
+                        "date": date,
+                        "preview": preview,
+                        "is_read": is_read
+                    })
+                except Exception as e:
+                    logger.debug(f"Error fetching email {uid}: {e}")
+                    continue
+            M.logout()
+            unread_count = sum(1 for r in results if not r.get("is_read", True))
+            return {"messages": results, "count": len(results), "unread_count": unread_count, "account": selected_id}
+        except imaplib.IMAP4.error as e:
+            return {"error": f"IMAP error: {str(e)}", "account": selected_id, "suggestion": "Check email credentials or app password settings"}
+        except Exception as e:
+            return {"error": f"Unexpected error: {str(e)}", "account": selected_id}
+    return await asyncio.to_thread(_sync)
+
+async def search_emails(account_id=None, from_email=None, subject=None, max_messages=50, **kwargs):
+    """Search for emails by sender and/or subject. Supports partial matching."""
+    def _sync():
+        accounts = _read_accounts()
+        
+        # Auto-select account if not provided
+        if not account_id:
+            if not accounts:
+                return {"error": "No email accounts configured. Add an account first."}
+            # Use the first available account
+            selected_id = list(accounts.keys())[0]
+            logger.info(f"No account_id provided, using first account: {selected_id}")
+        else:
+            selected_id = account_id
+            
+        acct = accounts.get(selected_id)
+        if not acct:
+            return {"error": f"Account {selected_id} not found", "available": list(accounts.keys())}
+        host = acct["imap_host"]; port = int(acct.get("imap_port",993)); use_ssl = acct.get("use_ssl", True)
+        username = acct["username"]; password = acct["password"]
+        try:
+            if use_ssl:
+                M = imaplib.IMAP4_SSL(host, port, timeout=30)
+            else:
+                M = imaplib.IMAP4(host, port, timeout=30)
+            M.login(username, password)
+            M.select("INBOX")
+            
+            # Build search criteria - IMAP FROM and SUBJECT without quotes for partial matching
+            # For phrases with spaces, wrap in quotes
+            search_parts = []
+            if from_email:
+                # Sanitize input: remove control characters and handle spaces
+                from_clean = from_email.strip().replace('\n', '').replace('\r', '')
+                if ' ' in from_clean:
+                    search_parts.append(f'FROM "{from_clean}"')
+                else:
+                    search_parts.append(f'FROM {from_clean}')
+            if subject:
+                subject_clean = subject.strip().replace('\n', '').replace('\r', '')
+                if ' ' in subject_clean:
+                    search_parts.append(f'SUBJECT "{subject_clean}"')
+                else:
+                    search_parts.append(f'SUBJECT {subject_clean}')
+            
+            if not search_parts:
+                search_criteria = "ALL"
+            else:
+                search_criteria = " ".join(search_parts)
+            
+            typ, data = M.search(None, search_criteria)
+            uids = data[0].split() if data and data[0] else []
+            uids = uids[-int(max_messages):]
+            results=[]
+            for uid in reversed(uids):
+                try:
+                    typ, msg_data = M.fetch(uid, "(RFC822 FLAGS)")
+                    if not msg_data or not msg_data[0]:
+                        continue
+                    raw = msg_data[0][1]
+                    msg = email.message_from_bytes(raw)
+                    subject_text = _decode_header(msg.get("Subject",""))
+                    frm = _decode_header(msg.get("From",""))
+                    date = msg.get("Date","")
+                    flags = msg_data[1] if len(msg_data) > 1 else b''
+                    is_read = b'\\Seen' in flags if isinstance(flags, bytes) else '\\Seen' in str(flags)
+                    body = ""
+                    if msg.is_multipart():
+                        for part in msg.walk():
+                            ctype = part.get_content_type()
+                            disp = str(part.get("Content-Disposition"))
+                            if ctype == "text/plain" and "attachment" not in disp:
+                                try:
+                                    body = part.get_payload(decode=True).decode(errors="replace")
+                                except Exception:
+                                    body = str(part.get_payload())
+                                break
+                    else:
+                        try:
+                            body = msg.get_payload(decode=True).decode(errors="replace")
+                        except Exception:
+                            body = str(msg.get_payload())
+                    preview = " ".join(body.strip().splitlines())[:400] + ("..." if len(body)>400 else "")
+                    results.append({
+                        "uid": uid.decode() if isinstance(uid, bytes) else str(uid),
+                        "from": frm,
+                        "subject": subject_text,
+                        "date": date,
+                        "preview": preview,
+                        "is_read": is_read
+                    })
+                except Exception as e:
+                    logger.debug(f"Error fetching email {uid}: {e}")
+                    continue
+            M.logout()
+            return {"messages": results, "count": len(results), "search_criteria": {"from": from_email, "subject": subject}, "account": selected_id}
+        except imaplib.IMAP4.error as e:
+            return {"error": f"IMAP error: {str(e)}", "account": selected_id, "suggestion": "Check email credentials or app password settings"}
+        except Exception as e:
+            return {"error": f"Unexpected error: {str(e)}", "account": selected_id}
     return await asyncio.to_thread(_sync)
 
 async def send_email(account_id, to, subject, body, **kwargs):
@@ -653,6 +854,8 @@ async def execute_function(function_name, arguments):
         "get_calendar": get_calendar,
         "add_contact": add_contact,
         "search_contacts": search_contacts,
+        "view_emails": view_emails,
+        "search_emails": search_emails,
         "fetch_unread_emails": fetch_unread_emails,
         "mark_email_read": mark_email_read,
         "send_email": send_email,

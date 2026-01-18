@@ -62,6 +62,11 @@ Run these commands in Terminal. Read each section before running.
    mkdir -p ~/Library/LaunchAgents
    cp launchd/com.executiveassistant.server.plist ~/Library/LaunchAgents/
 
+   # IMPORTANT: Edit the plist file to replace YOUR_USERNAME with your actual macOS username
+   # You can find your username with: whoami
+   USERNAME=$(whoami)
+   sed -i '' "s/YOUR_USERNAME/$USERNAME/g" ~/Library/LaunchAgents/com.executiveassistant.server.plist
+
    # Load the agent
    launchctl unload ~/Library/LaunchAgents/com.executiveassistant.server.plist 2>/dev/null || true
    launchctl load ~/Library/LaunchAgents/com.executiveassistant.server.plist
