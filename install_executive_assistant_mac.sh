@@ -962,8 +962,11 @@ async def move_to_folder(account_id=None, uids=None, folder_name=None, **kwargs)
             moved_count = 0
             for uid in uids:
                 try:
-                    M.copy(str(uid), folder_name)
-                    M.store(str(uid), '+FLAGS', '\\Deleted')
+                    # Convert UID to bytes if needed
+                    uid_bytes = str(uid).encode() if not isinstance(uid, bytes) else uid
+                    # Use UID commands for reliable operation
+                    M.uid('COPY', uid_bytes, folder_name)
+                    M.uid('STORE', uid_bytes, '+FLAGS', '\\Deleted')
                     moved_count += 1
                 except Exception as e:
                     logger.debug(f"Error moving UID {uid}: {e}")
@@ -1209,10 +1212,12 @@ async def move_to_trash(account_id=None, uids=None, **kwargs):
             moved_count = 0
             for uid in uids:
                 try:
-                    # Use UID commands
-                    result = M.uid('copy', str(uid), trash_folder)
+                    # Convert UID to bytes if needed
+                    uid_bytes = str(uid).encode() if not isinstance(uid, bytes) else uid
+                    # Use UID commands with uppercase
+                    result = M.uid('COPY', uid_bytes, trash_folder)
                     if result[0] == 'OK':
-                        M.uid('store', str(uid), '+FLAGS', '\\Deleted')
+                        M.uid('STORE', uid_bytes, '+FLAGS', '\\Deleted')
                         moved_count += 1
                 except Exception as e:
                     logger.debug(f"Error moving UID {uid} to trash: {e}")
@@ -1373,6 +1378,8 @@ async def move_spam_to_folder(account_id=None, days=None, max_check=100, folder_
                     logger.debug(f"Error checking UID {uid}: {e}")
             
             logger.info(f"Found {len(spam_candidates)} spam candidates")
+            if spam_candidates:
+                logger.info(f"Spam candidates: {[f\"{s['from']} - {s['subject']} (score: {s['spam_score']})\" for s in spam_candidates[:5]]}")
             
             if not spam_candidates:
                 M.logout()
@@ -1387,18 +1394,23 @@ async def move_spam_to_folder(account_id=None, days=None, max_check=100, folder_
             # Move spam to folder using UID commands
             moved_count = 0
             for candidate in spam_candidates:
-                uid = candidate["uid"]
+                uid_str = candidate["uid"]
+                # Convert UID to bytes if it's a string
+                uid_bytes = uid_str.encode() if isinstance(uid_str, str) else uid_str
                 try:
-                    # Use UID COPY and UID STORE
-                    result = M.uid('copy', uid, folder_name)
+                    # Use UID COPY and UID STORE with proper UID format
+                    logger.debug(f"Attempting to move UID {uid_str} to {folder_name}")
+                    result = M.uid('COPY', uid_bytes, folder_name)
+                    logger.debug(f"COPY result: {result}")
                     if result[0] == 'OK':
-                        M.uid('store', uid, '+FLAGS', '\\Deleted')
+                        store_result = M.uid('STORE', uid_bytes, '+FLAGS', '\\Deleted')
+                        logger.debug(f"STORE result: {store_result}")
                         moved_count += 1
-                        logger.debug(f"Moved UID {uid} to {folder_name}")
+                        logger.info(f"Successfully moved UID {uid_str} to {folder_name}")
                     else:
-                        logger.warning(f"Failed to copy UID {uid}: {result}")
+                        logger.warning(f"Failed to copy UID {uid_str}: {result}")
                 except Exception as e:
-                    logger.warning(f"Error moving UID {uid} to {folder_name}: {e}")
+                    logger.error(f"Error moving UID {uid_str} to {folder_name}: {e}")
             
             M.expunge()
             M.logout()
