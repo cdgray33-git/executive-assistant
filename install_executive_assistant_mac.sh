@@ -1271,6 +1271,7 @@ async def move_spam_to_folder(account_id=None, days=None, max_check=100, folder_
         whitelist_domains = ['github.com', 'google.com', 'microsoft.com', 'apple.com', 'amazon.com']
         whitelist_keywords = ['receipt', 'invoice', 'order confirmation', 'shipment', 'tracking']
         
+        M = None
         try:
             if use_ssl:
                 M = imaplib.IMAP4_SSL(host, port, timeout=30)
@@ -1382,7 +1383,6 @@ async def move_spam_to_folder(account_id=None, days=None, max_check=100, folder_
                 logger.info(f"Spam candidates: {[f\"{s['from']} - {s['subject']} (score: {s['spam_score']})\" for s in spam_candidates[:5]]}")
             
             if not spam_candidates:
-                M.logout()
                 return {
                     "message": "No spam detected",
                     "spam_candidates": [],
@@ -1413,7 +1413,6 @@ async def move_spam_to_folder(account_id=None, days=None, max_check=100, folder_
                     logger.error(f"Error moving UID {uid_str} to {folder_name}: {e}")
             
             M.expunge()
-            M.logout()
             
             logger.info(f"Successfully moved {moved_count} emails to {folder_name}")
             
@@ -1429,6 +1428,14 @@ async def move_spam_to_folder(account_id=None, days=None, max_check=100, folder_
         except Exception as e:
             logger.error(f"Error in move_spam_to_folder: {str(e)}")
             return {"error": f"Error moving spam to folder: {str(e)}"}
+        finally:
+            # Always close IMAP connection
+            if M is not None:
+                try:
+                    M.logout()
+                    logger.debug("IMAP connection closed successfully")
+                except:
+                    pass
     
     return await asyncio.to_thread(_sync)
 
