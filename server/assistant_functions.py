@@ -221,26 +221,25 @@ def _categorize_email(msg: email.message.Message) -> str:
 def _ensure_folder_exists(M: imaplib.IMAP4_SSL, folder_name: str) -> bool:
     """Ensure a folder exists, create it if it doesn't."""
     try:
-        # Check if folder exists
-        typ, folders = M.list()
-        folder_exists = False
-        if folders:
-            for folder in folders:
-                if folder_name.encode() in folder or f'"{folder_name}"'.encode() in folder:
-                    folder_exists = True
-                    break
+        # Try to select the folder - this is the most reliable check
+        typ, data = M.select(folder_name, readonly=True)
+        if typ == 'OK':
+            # Folder exists, go back to INBOX
+            M.select('INBOX')
+            return True
         
-        if not folder_exists:
-            # Create the folder
-            typ, data = M.create(folder_name)
-            if typ != 'OK':
-                logger.error(f"Failed to create folder {folder_name}: {data}")
-                return False
-            logger.info(f"Created folder: {folder_name}")
+        # Folder doesn't exist, try to create it
+        typ, data = M.create(folder_name)
+        if typ != 'OK':
+            logger.error(f"Failed to create folder {folder_name}: {data}")
+            return False
         
+        logger.info(f"Created folder: {folder_name}")
+        M.select('INBOX')  # Go back to INBOX
         return True
     except Exception as e:
         logger.error(f"Error ensuring folder exists: {e}")
+        return False
         return False
 
 
