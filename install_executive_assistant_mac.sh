@@ -696,7 +696,7 @@ async def view_emails(account_id, max_messages=10, **kwargs):
     return await asyncio.to_thread(_sync)
 
 async def search_emails(account_id, from_email=None, subject=None, max_messages=50, **kwargs):
-    """Search for emails by sender and/or subject."""
+    """Search for emails by sender and/or subject. Supports partial matching."""
     def _sync():
         accounts = _read_accounts()
         acct = accounts.get(account_id)
@@ -712,12 +712,13 @@ async def search_emails(account_id, from_email=None, subject=None, max_messages=
             M.login(username, password)
             M.select("INBOX")
             
-            # Build search criteria
+            # Build search criteria - IMAP FROM and SUBJECT without quotes for partial matching
             search_parts = []
             if from_email:
-                search_parts.append(f'FROM "{from_email}"')
+                # Remove quotes to allow partial matching (e.g., domain-only searches)
+                search_parts.append(f'FROM {from_email}')
             if subject:
-                search_parts.append(f'SUBJECT "{subject}"')
+                search_parts.append(f'SUBJECT {subject}')
             
             if not search_parts:
                 search_criteria = "ALL"
