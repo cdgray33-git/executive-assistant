@@ -222,10 +222,16 @@ def verify_key(x_api_key: Optional[str] = Header(None)):
 
 @app.get("/")
 async def root():
-    """Redirect root to UI or show welcome message."""
+    """Serve the chat UI."""
+    chat_ui = os.path.join(parent_dir, "ui", "chat.html")
+    if os.path.exists(chat_ui):
+        return FileResponse(chat_ui)
+    
+    # Fallback to old index.html if chat.html doesn't exist
     ui_index = os.path.join(parent_dir, "ui", "index.html")
     if os.path.exists(ui_index):
         return FileResponse(ui_index)
+    
     return {
         "message": "Executive Assistant API",
         "endpoints": {
@@ -391,13 +397,14 @@ Available intents:
 - take_note: Save a note
 - view_notes: Show saved notes
 - view_emails: Show/find/search/display emails/messages (use this when user wants to see emails, even if filtering by sender/subject)
-- delete_spam: Delete spam/junk emails
+- delete_spam: Move spam/junk emails to Spam folder (use for "move spam", "delete spam", "clean spam", etc.)
 - categorize_emails: Organize emails into folders
 - cleanup_emails: Bulk cleanup old emails
 
 IMPORTANT DISTINCTIONS:
 - "show emails from X" or "find emails from X" = view_emails (with sender filter)
 - "find contact X" or "search for person X" = search_contacts (looking in address book)
+- "move spam" or "delete spam" or "move last 300 spam emails" = delete_spam (with max_messages parameter)
 - If user mentions "email" or "message" in their request, it's likely view_emails, NOT search_contacts
 
 Extract these parameters when present:
@@ -411,9 +418,10 @@ Extract these parameters when present:
 - name: person's name
 - query: search query for contacts
 - count: number (e.g., "5 emails", "10 days")
+- max_messages: number of emails to process (e.g., "last 300 emails" = 300)
 - search/keyword: search term for filtering emails
 - older_than_days: age threshold for emails
-- delete: whether to actually delete (vs preview)
+- dry_run: false (always set to false for actual operations, true for preview)
 
 Respond ONLY with valid JSON, no other text:
 {"intent": "intent_name", "parameters": {"param": "value"}}"""
