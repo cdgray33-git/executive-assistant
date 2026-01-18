@@ -1032,13 +1032,13 @@ async def detect_spam(account_id=None, max_check=100, days=None, **kwargs):
             M.login(username, password)
             M.select("INBOX")
             
-            # Search based on days if provided
+            # Search based on days if provided - USE UID SEARCH
             if days:
                 from datetime import datetime, timedelta
                 since_date = (datetime.now() - timedelta(days=int(days))).strftime("%d-%b-%Y")
-                typ, data = M.search(None, f'(SINCE {since_date})')
+                typ, data = M.uid('search', None, f'(SINCE {since_date})')
             else:
-                typ, data = M.search(None, "ALL")
+                typ, data = M.uid('search', None, "ALL")
             
             uids = data[0].split() if data and data[0] else []
             if not days:
@@ -1047,7 +1047,7 @@ async def detect_spam(account_id=None, max_check=100, days=None, **kwargs):
             spam_candidates = []
             for uid in uids:
                 try:
-                    typ, msg_data = M.fetch(uid, "(RFC822.HEADER)")
+                    typ, msg_data = M.uid('fetch', uid, "(RFC822.HEADER)")
                     if not msg_data or not msg_data[0]:
                         continue
                     raw = msg_data[0][1]
@@ -1141,6 +1141,8 @@ async def detect_spam(account_id=None, max_check=100, days=None, **kwargs):
             # Sort by spam score (highest first)
             spam_candidates.sort(key=lambda x: x['spam_score'], reverse=True)
             
+            logger.info(f"Spam detection complete: found {len(spam_candidates)} spam out of {len(uids)} checked")
+            
             return {
                 "spam_candidates": spam_candidates,
                 "count": len(spam_candidates),
@@ -1207,9 +1209,11 @@ async def move_to_trash(account_id=None, uids=None, **kwargs):
             moved_count = 0
             for uid in uids:
                 try:
-                    M.copy(str(uid), trash_folder)
-                    M.store(str(uid), '+FLAGS', '\\Deleted')
-                    moved_count += 1
+                    # Use UID commands
+                    result = M.uid('copy', str(uid), trash_folder)
+                    if result[0] == 'OK':
+                        M.uid('store', str(uid), '+FLAGS', '\\Deleted')
+                        moved_count += 1
                 except Exception as e:
                     logger.debug(f"Error moving UID {uid} to trash: {e}")
             M.expunge()
@@ -1239,30 +1243,28 @@ async def move_spam_to_folder(account_id=None, days=None, max_check=100, folder_
         if not acct:
             return {"error": f"Account {selected_id} not found"}
         
-        # Step 1: Detect spam
-        logger.info(f"Step 1: Detecting spam from account {selected_id}")
-        import asyncio as async_inner
-        loop = async_inner.new_event_loop()
-        async_inner.set_event_loop(loop)
-        spam_result = loop.run_until_complete(detect_spam(selected_id, max_check, days))
-        loop.close()
-        
-        if "error" in spam_result:
-            return spam_result
-        
-        spam_candidates = spam_result.get("spam_candidates", [])
-        if not spam_candidates:
-            return {
-                "message": "No spam detected",
-                "spam_candidates": [],
-                "count": 0,
-                "moved_count": 0,
-                "account": selected_id
-            }
-        
-        # Step 2: Ensure folder exists
         host = acct["imap_host"]; port = int(acct.get("imap_port",993)); use_ssl = acct.get("use_ssl", True)
         username = acct["username"]; password = acct["password"]
+        
+        # Inline spam detection to avoid nested event loop
+        logger.info(f"Step 1: Detecting spam from account {selected_id}")
+        
+        spam_keywords = [
+            'viagra', 'cialis', 'levitra', 'phentermine', 'xanax', 'valium', 'pills', 'pharmacy', 'prescription', 'medication',
+            'lottery', 'winner', 'prize', 'million dollars', 'inheritance', 'claim', 'bank transfer', 'wire transfer', 'urgent payment',
+            'casino', 'poker', 'slots', 'jackpot', 'betting', 'gambling',
+            'xxx', 'adult', 'dating', 'singles', 'meet women', 'meet men',
+            'weight loss', 'lose weight', 'diet pills', 'fat burner', 'muscle gain',
+            'make money fast', 'work from home', 'earn extra', 'free money', 'cash bonus', 'limited time offer',
+            'click here', 'click now', 'buy now', 'order now', 'act now', 'don\\'t miss', 'last chance',
+            'seo services', 'increase traffic', 'website ranking', 'google ranking',
+            'account suspended', 'verify account', 'confirm identity', 'security alert', 'unusual activity',
+            'lowest price', '90% off', '80% off', '70% off', 'clearance sale', 'free gift', 'risk free'
+        ]
+        spam_sender_patterns = ['noreply', 'no-reply', 'donotreply', 'do-not-reply', 'mailer-daemon',
+                                '@0clickemail', '@sendgrid', 'newsletter@', 'promo@', 'marketing@', 'offer@']
+        whitelist_domains = ['github.com', 'google.com', 'microsoft.com', 'apple.com', 'amazon.com']
+        whitelist_keywords = ['receipt', 'invoice', 'order confirmation', 'shipment', 'tracking']
         
         try:
             if use_ssl:
@@ -1271,7 +1273,7 @@ async def move_spam_to_folder(account_id=None, days=None, max_check=100, folder_
                 M = imaplib.IMAP4(host, port, timeout=30)
             M.login(username, password)
             
-            # Check if folder exists
+            # Check if folder exists and create if needed
             typ, folders = M.list()
             folder_exists = False
             if folders:
@@ -1282,29 +1284,126 @@ async def move_spam_to_folder(account_id=None, days=None, max_check=100, folder_
                             folder_exists = True
                             break
             
-            # Create folder if it doesn't exist
             if not folder_exists:
                 logger.info(f"Creating folder: {folder_name}")
                 try:
                     M.create(folder_name)
+                    logger.info(f"Successfully created folder: {folder_name}")
                 except Exception as e:
                     logger.warning(f"Could not create folder {folder_name}: {e}")
             
-            # Step 3: Move spam to folder
             M.select("INBOX")
-            moved_count = 0
-            uids_to_move = [c["uid"] for c in spam_candidates]
             
-            for uid in uids_to_move:
+            # Search using UID
+            if days:
+                from datetime import datetime, timedelta
+                since_date = (datetime.now() - timedelta(days=int(days))).strftime("%d-%b-%Y")
+                typ, data = M.uid('search', None, f'(SINCE {since_date})')
+            else:
+                typ, data = M.uid('search', None, "ALL")
+            
+            uids = data[0].split() if data and data[0] else []
+            if not days:
+                uids = uids[-int(max_check):]
+            
+            spam_candidates = []
+            for uid in uids:
                 try:
-                    M.copy(str(uid), folder_name)
-                    M.store(str(uid), '+FLAGS', '\\Deleted')
-                    moved_count += 1
+                    typ, msg_data = M.uid('fetch', uid, "(RFC822.HEADER)")
+                    if not msg_data or not msg_data[0]:
+                        continue
+                    raw = msg_data[0][1]
+                    msg = email.message_from_bytes(raw)
+                    subject = _decode_header(msg.get("Subject",""))
+                    subject_lower = subject.lower()
+                    frm = _decode_header(msg.get("From",""))
+                    frm_lower = frm.lower()
+                    
+                    # Check whitelist
+                    is_whitelisted = False
+                    for domain in whitelist_domains:
+                        if domain in frm_lower:
+                            is_whitelisted = True
+                            break
+                    for keyword in whitelist_keywords:
+                        if keyword in subject_lower:
+                            is_whitelisted = True
+                            break
+                    if is_whitelisted:
+                        continue
+                    
+                    # Spam scoring
+                    spam_score = 0
+                    reasons = []
+                    for keyword in spam_keywords:
+                        if keyword in subject_lower:
+                            spam_score += 3
+                            reasons.append(f"spam keyword: '{keyword}'")
+                            break
+                    for pattern in spam_sender_patterns:
+                        if pattern in frm_lower:
+                            spam_score += 2
+                            reasons.append(f"suspicious sender pattern: '{pattern}'")
+                            break
+                    if subject and len(subject) > 10:
+                        caps_count = sum(1 for c in subject if c.isupper())
+                        if caps_count / len(subject) > 0.3:
+                            spam_score += 2
+                            reasons.append("excessive caps")
+                    if subject.count('!') >= 3:
+                        spam_score += 2
+                        reasons.append(f"{subject.count('!')} exclamation marks")
+                    if '$' in subject and subject.count('$') >= 2:
+                        spam_score += 1
+                        reasons.append("multiple $ signs")
+                    if '%' in subject:
+                        spam_score += 1
+                        reasons.append("percentage in subject")
+                    
+                    if spam_score >= 3:
+                        spam_candidates.append({
+                            "uid": uid.decode() if isinstance(uid, bytes) else str(uid),
+                            "from": frm,
+                            "subject": subject,
+                            "spam_score": spam_score,
+                            "reasons": reasons,
+                            "date": _decode_header(msg.get("Date", ""))
+                        })
                 except Exception as e:
-                    logger.debug(f"Error moving UID {uid} to {folder_name}: {e}")
+                    logger.debug(f"Error checking UID {uid}: {e}")
+            
+            logger.info(f"Found {len(spam_candidates)} spam candidates")
+            
+            if not spam_candidates:
+                M.logout()
+                return {
+                    "message": "No spam detected",
+                    "spam_candidates": [],
+                    "count": 0,
+                    "moved_count": 0,
+                    "account": selected_id
+                }
+            
+            # Move spam to folder using UID commands
+            moved_count = 0
+            for candidate in spam_candidates:
+                uid = candidate["uid"]
+                try:
+                    # Use UID COPY and UID STORE
+                    result = M.uid('copy', uid, folder_name)
+                    if result[0] == 'OK':
+                        M.uid('store', uid, '+FLAGS', '\\Deleted')
+                        moved_count += 1
+                        logger.debug(f"Moved UID {uid} to {folder_name}")
+                    else:
+                        logger.warning(f"Failed to copy UID {uid}: {result}")
+                except Exception as e:
+                    logger.warning(f"Error moving UID {uid} to {folder_name}: {e}")
             
             M.expunge()
             M.logout()
+            
+            logger.info(f"Successfully moved {moved_count} emails to {folder_name}")
             
             return {
                 "message": f"Moved {moved_count} spam email(s) to '{folder_name}' folder",
@@ -1316,6 +1415,7 @@ async def move_spam_to_folder(account_id=None, days=None, max_check=100, folder_
                 "note": f"Review the {moved_count} emails moved to '{folder_name}' folder. Emails can be recovered from there if needed."
             }
         except Exception as e:
+            logger.error(f"Error in move_spam_to_folder: {str(e)}")
             return {"error": f"Error moving spam to folder: {str(e)}"}
     
     return await asyncio.to_thread(_sync)
