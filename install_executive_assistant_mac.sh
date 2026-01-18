@@ -414,6 +414,7 @@ FUNCTION_REGISTRY = {
     "create_folder": {"description":"Create a new email folder/mailbox for organizing emails", "parameters":["account_id","folder_name"]},
     "move_to_folder": {"description":"Move specific emails to a folder by their UIDs", "parameters":["account_id","uids","folder_name"]},
     "detect_spam": {"description":"Detect potential spam emails using enhanced heuristics (does not delete, only identifies). Use 'days' parameter to check emails from last N days.", "parameters":["account_id","max_check","days"]},
+    "move_spam_to_folder": {"description":"Detect spam and automatically move to specified folder (creates folder if needed). Returns spam candidates for review. Use 'days' parameter for date filtering and 'folder_name' to specify destination folder (default: Spam).", "parameters":["account_id","days","max_check","folder_name"]},
     "move_to_trash": {"description":"Move emails to trash folder (soft delete, recoverable)", "parameters":["account_id","uids"]},
     "summarize_text": {"description":"Summarize text", "parameters":["text"]}
 }
@@ -1224,6 +1225,101 @@ async def move_to_trash(account_id=None, uids=None, **kwargs):
             return {"error": f"Error moving to trash: {str(e)}"}
     return await asyncio.to_thread(_sync)
 
+async def move_spam_to_folder(account_id=None, days=None, max_check=100, folder_name="Spam", **kwargs):
+    """Detect spam and move to specified folder (creates folder if needed). Returns spam candidates for review."""
+    def _sync():
+        accounts = _read_accounts()
+        if not account_id:
+            if not accounts:
+                return {"error": "No email accounts configured"}
+            selected_id = list(accounts.keys())[0]
+        else:
+            selected_id = account_id
+        acct = accounts.get(selected_id)
+        if not acct:
+            return {"error": f"Account {selected_id} not found"}
+        
+        # Step 1: Detect spam
+        logger.info(f"Step 1: Detecting spam from account {selected_id}")
+        import asyncio as async_inner
+        loop = async_inner.new_event_loop()
+        async_inner.set_event_loop(loop)
+        spam_result = loop.run_until_complete(detect_spam(selected_id, max_check, days))
+        loop.close()
+        
+        if "error" in spam_result:
+            return spam_result
+        
+        spam_candidates = spam_result.get("spam_candidates", [])
+        if not spam_candidates:
+            return {
+                "message": "No spam detected",
+                "spam_candidates": [],
+                "count": 0,
+                "moved_count": 0,
+                "account": selected_id
+            }
+        
+        # Step 2: Ensure folder exists
+        host = acct["imap_host"]; port = int(acct.get("imap_port",993)); use_ssl = acct.get("use_ssl", True)
+        username = acct["username"]; password = acct["password"]
+        
+        try:
+            if use_ssl:
+                M = imaplib.IMAP4_SSL(host, port, timeout=30)
+            else:
+                M = imaplib.IMAP4(host, port, timeout=30)
+            M.login(username, password)
+            
+            # Check if folder exists
+            typ, folders = M.list()
+            folder_exists = False
+            if folders:
+                for folder_data in folders:
+                    if folder_data:
+                        folder_str = folder_data.decode() if isinstance(folder_data, bytes) else str(folder_data)
+                        if folder_name in folder_str:
+                            folder_exists = True
+                            break
+            
+            # Create folder if it doesn't exist
+            if not folder_exists:
+                logger.info(f"Creating folder: {folder_name}")
+                try:
+                    M.create(folder_name)
+                except Exception as e:
+                    logger.warning(f"Could not create folder {folder_name}: {e}")
+            
+            # Step 3: Move spam to folder
+            M.select("INBOX")
+            moved_count = 0
+            uids_to_move = [c["uid"] for c in spam_candidates]
+            
+            for uid in uids_to_move:
+                try:
+                    M.copy(str(uid), folder_name)
+                    M.store(str(uid), '+FLAGS', '\\Deleted')
+                    moved_count += 1
+                except Exception as e:
+                    logger.debug(f"Error moving UID {uid} to {folder_name}: {e}")
+            
+            M.expunge()
+            M.logout()
+            
+            return {
+                "message": f"Moved {moved_count} spam email(s) to '{folder_name}' folder",
+                "spam_candidates": spam_candidates,
+                "count": len(spam_candidates),
+                "moved_count": moved_count,
+                "folder": folder_name,
+                "account": selected_id,
+                "note": f"Review the {moved_count} emails moved to '{folder_name}' folder. Emails can be recovered from there if needed."
+            }
+        except Exception as e:
+            return {"error": f"Error moving spam to folder: {str(e)}"}
+    
+    return await asyncio.to_thread(_sync)
+
 # Router: execute function by name
 async def execute_function(function_name, arguments):
     mapping = {
@@ -1244,6 +1340,7 @@ async def execute_function(function_name, arguments):
         "create_folder": create_folder,
         "move_to_folder": move_to_folder,
         "detect_spam": detect_spam,
+        "move_spam_to_folder": move_spam_to_folder,
         "move_to_trash": move_to_trash,
         "summarize_text": summarize_text
     }
