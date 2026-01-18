@@ -372,10 +372,23 @@ from datetime import datetime, timedelta
 from email.message import EmailMessage
 from email.header import decode_header
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("assistant_functions")
-
+# Configure logging to both file and console
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
+LOG_DIR = os.path.join(ROOT, "..", "logs")
+os.makedirs(LOG_DIR, exist_ok=True)
+LOG_FILE = os.path.join(LOG_DIR, "assistant.log")
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(LOG_FILE),
+        logging.StreamHandler()  # Also print to console
+    ]
+)
+logger = logging.getLogger("assistant_functions")
+logger.info(f"Logging initialized. Log file: {LOG_FILE}")
+
 NOTES_DIR = os.path.join(ROOT, "notes")
 CALENDAR_FILE = os.path.join(ROOT, "calendar", "events.json")
 CONTACTS_FILE = os.path.join(ROOT, "contacts", "contacts.json")
