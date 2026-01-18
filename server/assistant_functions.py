@@ -84,6 +84,7 @@ FUNCTION_REGISTRY = {
     "bulk_delete_emails": {"description": "Bulk delete emails by criteria", "parameters": ["account_id", "criteria", "dry_run"]},
     "categorize_emails": {"description": "Auto-categorize emails into folders", "parameters": ["account_id", "max_messages", "dry_run"]},
     "detect_spam": {"description": "Detect and optionally delete spam", "parameters": ["account_id", "max_messages", "delete", "dry_run"]},
+    "move_spam_to_folder": {"description": "Move spam emails to Spam folder (recommended - does not delete)", "parameters": ["account_id", "max_messages", "dry_run"]},
     "cleanup_inbox": {"description": "Automated inbox cleanup workflow", "parameters": ["account_id", "dry_run"]},
     "generate_presentation": {"description": "Generate PowerPoint presentation", "parameters": ["title", "slides", "output_filename"]},
     "create_briefing": {"description": "Create briefing document", "parameters": ["title", "summary", "key_points", "action_items", "format"]},
@@ -215,6 +216,57 @@ def _categorize_email(msg: email.message.Message) -> str:
     
     # Default to Personal
     return "Personal"
+
+
+def _ensure_folder_exists(M: imaplib.IMAP4_SSL, folder_name: str) -> bool:
+    """Ensure a folder exists, create it if it doesn't."""
+    try:
+        # Check if folder exists
+        typ, folders = M.list()
+        folder_exists = False
+        if folders:
+            for folder in folders:
+                if folder_name.encode() in folder or f'"{folder_name}"'.encode() in folder:
+                    folder_exists = True
+                    break
+        
+        if not folder_exists:
+            # Create the folder
+            typ, data = M.create(folder_name)
+            if typ != 'OK':
+                logger.error(f"Failed to create folder {folder_name}: {data}")
+                return False
+            logger.info(f"Created folder: {folder_name}")
+        
+        return True
+    except Exception as e:
+        logger.error(f"Error ensuring folder exists: {e}")
+        return False
+
+
+def _move_email_to_folder(M: imaplib.IMAP4_SSL, uid: bytes, target_folder: str) -> bool:
+    """Move an email to a target folder using UID."""
+    try:
+        # Ensure UID is bytes
+        if isinstance(uid, str):
+            uid = uid.encode()
+        
+        # Copy to target folder
+        typ, data = M.uid('COPY', uid, target_folder)
+        if typ != 'OK':
+            logger.error(f"Failed to copy email {uid} to {target_folder}: {data}")
+            return False
+        
+        # Mark original as deleted
+        typ, data = M.uid('STORE', uid, '+FLAGS', '(\\Deleted)')
+        if typ != 'OK':
+            logger.error(f"Failed to mark email {uid} as deleted: {data}")
+            return False
+        
+        return True
+    except Exception as e:
+        logger.error(f"Error moving email: {e}")
+        return False
 
 
 # Basic functions
@@ -670,6 +722,92 @@ async def detect_spam(account_id, max_messages=EMAIL_BATCH_SIZE, delete=False, d
                 "dry_run": dry_run
             }
         except Exception as e:
+            return {"error": str(e)}
+    
+    return await asyncio.to_thread(_sync)
+
+
+async def move_spam_to_folder(account_id, max_messages=EMAIL_BATCH_SIZE, dry_run=False, **kwargs):
+    """
+    Detect spam emails and move them to the Spam folder (does not delete).
+    This is the recommended approach - moves spam to Spam folder for review.
+    
+    Args:
+        account_id: Email account identifier
+        max_messages: Maximum number of recent emails to scan (default: 100)
+        dry_run: If True, only reports what would be moved without moving
+    
+    Returns:
+        Dictionary with results including count of moved emails and details
+    """
+    def _sync():
+        accounts = _load_email_accounts()
+        acct = accounts.get(account_id)
+        if not acct:
+            return {"error": f"Account {account_id} not found"}
+        
+        try:
+            M = _connect_imap(acct)
+            M.select("INBOX")
+            
+            # Ensure Spam folder exists
+            spam_folder = "Spam"
+            if not dry_run:
+                if not _ensure_folder_exists(M, spam_folder):
+                    # Try alternative names
+                    for alt_name in ["Junk", "[Gmail]/Spam", "Junk Email"]:
+                        if _ensure_folder_exists(M, alt_name):
+                            spam_folder = alt_name
+                            break
+            
+            # Search for all emails
+            typ, data = M.search(None, "ALL")
+            uids = data[0].split() if data and data[0] else []
+            uids = uids[-int(max_messages):]  # Get the last N emails
+            
+            spam_messages = []
+            moved_count = 0
+            
+            for uid in uids:
+                typ, msg_data = M.fetch(uid, "(RFC822)")
+                if not msg_data or not msg_data[0]:
+                    continue
+                    
+                raw = msg_data[0][1]
+                msg = email.message_from_bytes(raw)
+                
+                if _is_spam(msg):
+                    subject = _decode_header(msg.get("Subject", ""))
+                    frm = _decode_header(msg.get("From", ""))
+                    spam_messages.append({
+                        "uid": uid.decode() if isinstance(uid, bytes) else str(uid),
+                        "from": frm,
+                        "subject": subject
+                    })
+                    
+                    if not dry_run:
+                        # Move to spam folder
+                        if _move_email_to_folder(M, uid, spam_folder):
+                            moved_count += 1
+            
+            if not dry_run and moved_count > 0:
+                # Expunge deleted messages from INBOX
+                M.expunge()
+            
+            M.logout()
+            
+            response_msg = f"{'Would move' if dry_run else 'Moved'} {len(spam_messages)} spam email(s) to {spam_folder} folder"
+            
+            return {
+                "message": response_msg,
+                "spam_count": len(spam_messages),
+                "moved_count": moved_count if not dry_run else 0,
+                "spam_messages": spam_messages[:10],  # Return first 10 for preview
+                "dry_run": dry_run,
+                "target_folder": spam_folder
+            }
+        except Exception as e:
+            logger.exception(f"Error in move_spam_to_folder: {e}")
             return {"error": str(e)}
     
     return await asyncio.to_thread(_sync)
@@ -1184,9 +1322,9 @@ async def handle_view_emails(params: Dict) -> Dict:
 
 
 async def handle_delete_spam(params: Dict) -> Dict:
-    """Handle spam deletion intent."""
+    """Handle spam deletion intent - moves spam to Spam folder."""
     try:
-        days = params.get("days", 30)
+        max_messages = params.get("max_messages", EMAIL_BATCH_SIZE)
         dry_run = params.get("dry_run", False)
         
         # Get first email account
@@ -1195,8 +1333,26 @@ async def handle_delete_spam(params: Dict) -> Dict:
             return {"error": "No email accounts configured"}
         
         account_id = list(accounts.keys())[0]
-        result = await detect_spam(account_id=account_id, delete=True, dry_run=dry_run)
-        return {"response": result.get("response", "Spam detection completed")}
+        result = await move_spam_to_folder(account_id=account_id, max_messages=max_messages, dry_run=dry_run)
+        
+        # Format response
+        if "error" in result:
+            return {"response": f"Error: {result['error']}"}
+        
+        message = result.get("message", "Spam processing completed")
+        spam_count = result.get("spam_count", 0)
+        target_folder = result.get("target_folder", "Spam")
+        
+        response = f"{message}\n\n"
+        if spam_count > 0:
+            response += f"Found {spam_count} spam email(s):\n"
+            for i, spam in enumerate(result.get("spam_messages", [])[:5], 1):
+                response += f"{i}. From: {spam.get('from', 'Unknown')}\n"
+                response += f"   Subject: {spam.get('subject', 'No subject')}\n"
+        else:
+            response += "No spam emails found in the scanned messages."
+        
+        return {"response": response}
     except Exception as e:
         logger.error(f"Error handling delete_spam: {e}")
         return {"error": str(e)}
