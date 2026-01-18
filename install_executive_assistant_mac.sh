@@ -413,7 +413,7 @@ FUNCTION_REGISTRY = {
     "list_folders": {"description":"List all email folders/mailboxes in the account", "parameters":["account_id"]},
     "create_folder": {"description":"Create a new email folder/mailbox for organizing emails", "parameters":["account_id","folder_name"]},
     "move_to_folder": {"description":"Move specific emails to a folder by their UIDs", "parameters":["account_id","uids","folder_name"]},
-    "detect_spam": {"description":"Detect potential spam emails using heuristics (does not delete, only identifies)", "parameters":["account_id","max_check"]},
+    "detect_spam": {"description":"Detect potential spam emails using enhanced heuristics (does not delete, only identifies). Use 'days' parameter to check emails from last N days.", "parameters":["account_id","max_check","days"]},
     "move_to_trash": {"description":"Move emails to trash folder (soft delete, recoverable)", "parameters":["account_id","uids"]},
     "summarize_text": {"description":"Summarize text", "parameters":["text"]}
 }
@@ -973,8 +973,8 @@ async def move_to_folder(account_id=None, uids=None, folder_name=None, **kwargs)
             return {"error": f"Error moving emails: {str(e)}"}
     return await asyncio.to_thread(_sync)
 
-async def detect_spam(account_id=None, max_check=100, **kwargs):
-    """Detect potential spam emails using heuristics (no deletion)."""
+async def detect_spam(account_id=None, max_check=100, days=None, **kwargs):
+    """Detect potential spam emails using enhanced heuristics (no deletion)."""
     def _sync():
         accounts = _read_accounts()
         if not account_id:
@@ -989,9 +989,39 @@ async def detect_spam(account_id=None, max_check=100, **kwargs):
         host = acct["imap_host"]; port = int(acct.get("imap_port",993)); use_ssl = acct.get("use_ssl", True)
         username = acct["username"]; password = acct["password"]
         
-        # Common spam patterns
-        spam_keywords = ['viagra', 'cialis', 'lottery', 'winner', 'casino', 'pills', 'enlarge', 'weight loss', 'make money fast', 'click here', 'buy now']
-        spam_domains = ['example-spam.com']  # Add known spam domains
+        # Enhanced spam patterns - much more comprehensive
+        spam_keywords = [
+            # Pharmaceuticals
+            'viagra', 'cialis', 'levitra', 'phentermine', 'xanax', 'valium', 'pills', 'pharmacy', 'prescription', 'medication',
+            # Financial scams
+            'lottery', 'winner', 'prize', 'million dollars', 'inheritance', 'claim', 'bank transfer', 'wire transfer', 'urgent payment',
+            # Gambling
+            'casino', 'poker', 'slots', 'jackpot', 'betting', 'gambling',
+            # Adult content
+            'xxx', 'adult', 'dating', 'singles', 'meet women', 'meet men',
+            # Weight loss/health
+            'weight loss', 'lose weight', 'diet pills', 'fat burner', 'muscle gain',
+            # Get rich quick
+            'make money fast', 'work from home', 'earn extra', 'free money', 'cash bonus', 'limited time offer',
+            # Clickbait
+            'click here', 'click now', 'buy now', 'order now', 'act now', 'don\\'t miss', 'last chance',
+            # SEO/Marketing spam
+            'seo services', 'increase traffic', 'website ranking', 'google ranking',
+            # Fake alerts
+            'account suspended', 'verify account', 'confirm identity', 'security alert', 'unusual activity',
+            # Deals that are too good
+            'lowest price', '90% off', '80% off', '70% off', 'clearance sale', 'free gift', 'risk free'
+        ]
+        
+        # Suspicious sender patterns
+        spam_sender_patterns = [
+            'noreply', 'no-reply', 'donotreply', 'do-not-reply', 'mailer-daemon',
+            '@0clickemail', '@sendgrid', 'newsletter@', 'promo@', 'marketing@', 'offer@'
+        ]
+        
+        # Whitelist - never mark these as spam
+        whitelist_domains = ['github.com', 'google.com', 'microsoft.com', 'apple.com', 'amazon.com']
+        whitelist_keywords = ['receipt', 'invoice', 'order confirmation', 'shipment', 'tracking']
         
         try:
             if use_ssl:
@@ -1000,9 +1030,18 @@ async def detect_spam(account_id=None, max_check=100, **kwargs):
                 M = imaplib.IMAP4(host, port, timeout=30)
             M.login(username, password)
             M.select("INBOX")
-            typ, data = M.search(None, "ALL")
+            
+            # Search based on days if provided
+            if days:
+                from datetime import datetime, timedelta
+                since_date = (datetime.now() - timedelta(days=int(days))).strftime("%d-%b-%Y")
+                typ, data = M.search(None, f'(SINCE {since_date})')
+            else:
+                typ, data = M.search(None, "ALL")
+            
             uids = data[0].split() if data and data[0] else []
-            uids = uids[-int(max_check):]  # Check last N emails
+            if not days:
+                uids = uids[-int(max_check):]  # Check last N emails only if no date filter
             
             spam_candidates = []
             for uid in uids:
@@ -1012,53 +1051,102 @@ async def detect_spam(account_id=None, max_check=100, **kwargs):
                         continue
                     raw = msg_data[0][1]
                     msg = email.message_from_bytes(raw)
-                    subject = _decode_header(msg.get("Subject","")).lower()
-                    frm = _decode_header(msg.get("From","")).lower()
+                    subject = _decode_header(msg.get("Subject",""))
+                    subject_lower = subject.lower()
+                    frm = _decode_header(msg.get("From",""))
+                    frm_lower = frm.lower()
+                    
+                    # Check whitelist first
+                    is_whitelisted = False
+                    for domain in whitelist_domains:
+                        if domain in frm_lower:
+                            is_whitelisted = True
+                            break
+                    for keyword in whitelist_keywords:
+                        if keyword in subject_lower:
+                            is_whitelisted = True
+                            break
+                    
+                    if is_whitelisted:
+                        continue
                     
                     # Spam detection heuristics
                     spam_score = 0
                     reasons = []
                     
-                    # Check subject for spam keywords
+                    # Check subject for spam keywords (more weight)
                     for keyword in spam_keywords:
-                        if keyword in subject:
-                            spam_score += 2
-                            reasons.append(f"spam keyword in subject: {keyword}")
-                    
-                    # Check sender domain
-                    for domain in spam_domains:
-                        if domain in frm:
+                        if keyword in subject_lower:
                             spam_score += 3
-                            reasons.append(f"spam domain: {domain}")
+                            reasons.append(f"spam keyword: '{keyword}'")
+                            break  # Only count first match per category
                     
-                    # Excessive caps in subject
-                    if subject and subject.isupper() and len(subject) > 10:
-                        spam_score += 1
-                        reasons.append("all caps subject")
+                    # Check sender patterns
+                    for pattern in spam_sender_patterns:
+                        if pattern in frm_lower:
+                            spam_score += 2
+                            reasons.append(f"suspicious sender pattern: '{pattern}'")
+                            break
+                    
+                    # Excessive caps in subject (30%+ uppercase)
+                    if subject:
+                        caps_count = sum(1 for c in subject if c.isupper())
+                        if len(subject) > 10 and caps_count / len(subject) > 0.3:
+                            spam_score += 2
+                            reasons.append("excessive caps in subject")
                     
                     # Multiple exclamation marks
-                    if subject.count('!') > 2:
-                        spam_score += 1
-                        reasons.append("excessive exclamation marks")
+                    if subject.count('!') >= 3:
+                        spam_score += 2
+                        reasons.append(f"excessive punctuation ({subject.count('!')} exclamation marks)")
                     
-                    if spam_score >= 2:  # Threshold for spam
+                    # Dollar signs in subject (common in sales spam)
+                    if '$' in subject and subject.count('$') >= 2:
+                        spam_score += 1
+                        reasons.append("multiple dollar signs")
+                    
+                    # Numbers and percentages (common in deal spam)
+                    if '%' in subject:
+                        spam_score += 1
+                        reasons.append("percentage in subject")
+                    
+                    # All caps words in subject
+                    words = subject.split()
+                    caps_words = [w for w in words if w.isupper() and len(w) > 2]
+                    if len(caps_words) >= 3:
+                        spam_score += 1
+                        reasons.append(f"{len(caps_words)} all-caps words")
+                    
+                    # RE: or FW: without being a reply (potential fake reply)
+                    if (subject_lower.startswith('re:') or subject_lower.startswith('fw:')) and 'In-Reply-To' not in msg:
+                        spam_score += 1
+                        reasons.append("fake reply/forward")
+                    
+                    # Lower threshold for spam classification
+                    if spam_score >= 3:  # Lowered from 2 to catch more spam
                         spam_candidates.append({
                             "uid": uid.decode() if isinstance(uid, bytes) else str(uid),
                             "from": frm,
-                            "subject": _decode_header(msg.get("Subject","")),
+                            "subject": subject,
                             "spam_score": spam_score,
-                            "reasons": reasons
+                            "reasons": reasons,
+                            "date": _decode_header(msg.get("Date", ""))
                         })
                 except Exception as e:
                     logger.debug(f"Error checking UID {uid}: {e}")
             
             M.logout()
+            
+            # Sort by spam score (highest first)
+            spam_candidates.sort(key=lambda x: x['spam_score'], reverse=True)
+            
             return {
                 "spam_candidates": spam_candidates,
                 "count": len(spam_candidates),
                 "checked": len(uids),
                 "account": selected_id,
-                "message": f"Found {len(spam_candidates)} potential spam email(s) out of {len(uids)} checked. Review before deletion."
+                "message": f"Found {len(spam_candidates)} potential spam email(s) out of {len(uids)} checked. Review before deletion.",
+                "note": "Whitelisted domains (github.com, google.com, etc.) and receipts/invoices are automatically excluded"
             }
         except Exception as e:
             return {"error": f"Error detecting spam: {str(e)}"}
