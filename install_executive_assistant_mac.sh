@@ -1399,38 +1399,43 @@ async def move_spam_to_folder(account_id=None, days=None, max_check=30, folder_n
                 logger.info(f"Spam candidates: {[f\"{s['from']} - {s['subject']} (score: {s['spam_score']})\" for s in spam_candidates[:5]]}")
             
             if not spam_candidates:
-                return {
-                    "message": "No spam detected",
-                    "spam_candidates": [],
-                    "count": 0,
-                    "moved_count": 0,
-                    "account": selected_id
-                }
+                return f"ℹ️ NO SPAM DETECTED\n\nChecked {checked_count} email(s) in your inbox.\nNo emails matched spam criteria (score >= 3).\n\n✓ Your inbox looks clean!"
+            
+            # Select INBOX again before moving (ensure we're in the right mailbox)
+            M.select("INBOX")
             
             # Move spam to folder using UID commands
             moved_count = 0
+            failed_count = 0
             for candidate in spam_candidates:
                 uid_str = candidate["uid"]
                 # Convert UID to bytes if it's a string
                 uid_bytes = uid_str.encode() if isinstance(uid_str, str) else uid_str
                 try:
                     # Use UID COPY and UID STORE with proper UID format
-                    logger.debug(f"Attempting to move UID {uid_str} to {folder_name}")
+                    logger.info(f"Moving UID {uid_str} to {folder_name}...")
                     result = M.uid('COPY', uid_bytes, folder_name)
-                    logger.debug(f"COPY result: {result}")
+                    logger.info(f"COPY result for UID {uid_str}: {result}")
                     if result[0] == 'OK':
                         store_result = M.uid('STORE', uid_bytes, '+FLAGS', '\\Deleted')
-                        logger.debug(f"STORE result: {store_result}")
-                        moved_count += 1
-                        logger.info(f"Successfully moved UID {uid_str} to {folder_name}")
+                        logger.info(f"STORE result for UID {uid_str}: {store_result}")
+                        if store_result[0] == 'OK':
+                            moved_count += 1
+                            logger.info(f"✓ Successfully moved UID {uid_str} to {folder_name}")
+                        else:
+                            failed_count += 1
+                            logger.error(f"✗ Failed to mark UID {uid_str} as deleted: {store_result}")
                     else:
-                        logger.warning(f"Failed to copy UID {uid_str}: {result}")
+                        failed_count += 1
+                        logger.error(f"✗ Failed to copy UID {uid_str}: {result}")
                 except Exception as e:
-                    logger.error(f"Error moving UID {uid_str} to {folder_name}: {e}")
+                    failed_count += 1
+                    logger.error(f"✗ Exception moving UID {uid_str} to {folder_name}: {e}")
             
+            # Expunge to actually delete the emails from INBOX
+            logger.info(f"Expunging {moved_count} deleted emails from INBOX...")
             M.expunge()
-            
-            logger.info(f"Successfully moved {moved_count} emails to {folder_name}")
+            logger.info(f"Expunge complete")
             
             # Create detailed summary for user
             moved_summary = []
@@ -1441,18 +1446,22 @@ async def move_spam_to_folder(account_id=None, days=None, max_check=30, folder_n
             if len(spam_candidates) > 10:
                 summary_text += f"\n\n... and {len(spam_candidates) - 10} more emails"
             
-            return {
-                "message": f"✅ Successfully moved {moved_count} spam email(s) to '{folder_name}' folder\n\nMoved emails:\n{summary_text}",
-                "spam_candidates": spam_candidates,
-                "count": len(spam_candidates),
-                "moved_count": moved_count,
-                "folder": folder_name,
-                "account": selected_id,
-                "note": f"Check your '{folder_name}' folder to review the {moved_count} emails that were moved. You can recover any legitimate emails from there."
-            }
+            result_message = f"✅ SPAM CLEANUP RESULTS ✅\n\n"
+            result_message += f"Found {len(spam_candidates)} spam email(s)\n"
+            result_message += f"Successfully moved: {moved_count}\n"
+            if failed_count > 0:
+                result_message += f"Failed to move: {failed_count}\n"
+            result_message += f"Destination folder: '{folder_name}'\n\n"
+            result_message += f"MOVED EMAILS:\n{summary_text}\n\n"
+            result_message += f"📁 Check your '{folder_name}' folder to review the moved emails.\n"
+            result_message += f"💡 You can recover any legitimate emails from there if needed."
+            
+            return result_message
         except Exception as e:
             logger.error(f"Error in move_spam_to_folder: {str(e)}")
-            return {"error": f"Error moving spam to folder: {str(e)}"}
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return f"❌ ERROR MOVING SPAM\n\n{str(e)}\n\nCheck logs at ~/ExecutiveAssistant/logs/assistant.log for details."
         finally:
             # Always close IMAP connection
             if M is not None:
