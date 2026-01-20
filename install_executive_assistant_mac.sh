@@ -248,7 +248,7 @@ log "Homebrew, ollama, python OK"
 log "Starting Ollama daemon (background)... logs -> $LOG_DIR/ollama_*.log"
 mkdir -p "$LOG_DIR"
 if ! pgrep -f "ollama serve" >/dev/null 2>&1; then
-  nohup ollama serve --watch >"$LOG_DIR/ollama_stdout.log" 2>"$LOG_DIR/ollama_stderr.log" &
+  nohup ollama serve  >"$LOG_DIR/ollama_stdout.log" 2>"$LOG_DIR/ollama_stderr.log" &
   sleep 2
 fi
 if wait_for_http "$OLLAMA_HTTP/api/health" 60; then
