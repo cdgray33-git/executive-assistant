@@ -1,7 +1,10 @@
 # Native macOS Installation Checklist (Homebrew Ollama, Homebrew Python, per-user launchd)
 
-This checklist installs and configures the Executive Assistant server natively on an Apple Silicon Mac (M1/M2/M3).
-It expects you want Ollama native (Homebrew), one 3B model and one 7B model available, and a per-user launchd agent.
+This checklist provides **manual installation steps** for the Executive Assistant server natively on an Apple Silicon Mac (M1/M2/M3).
+
+> **Quick Start:** For automated installation, use `./install_mac_assistant.sh` from the repository root. See [README.md](../README.md) for details.
+
+This manual checklist expects you want Ollama native (Homebrew), one 3B model and one 7B model available, and a per-user launchd agent.
 
 Run these commands in Terminal. Read each section before running.
 
