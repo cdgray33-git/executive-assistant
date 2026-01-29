@@ -4,3 +4,7 @@ httpx
 keyring
 python-multipart
 python-dotenv
+python-pptx
+python-docx
+reportlab
+pydantic
