@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Mail, Calendar, Users, FileText, Zap, CheckCircle, Settings, MessageSquare } from 'lucide-react'
+import { Mail, Calendar, Users, FileText, Zap, CheckCircle, Settings, Plus, MessageSquare } from 'lucide-react'
 import ChatInterface from './ChatInterface'
 
 function App() {
@@ -101,18 +101,25 @@ function App() {
       {/* Navigation */}
       <nav className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-6 py-2 flex gap-1">
-          {['dashboard', 'chat', 'email', 'calendar', 'meetings', 'documents'].map(tab => (
+          {[
+            { id: 'dashboard', label: 'Dashboard' },
+            { id: 'chat', label: 'Chat', icon: MessageSquare },
+            { id: 'email', label: 'Email' },
+            { id: 'calendar', label: 'Calendar' },
+            { id: 'meetings', label: 'Meetings' },
+            { id: 'documents', label: 'Documents' }
+          ].map(tab => (
             <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
               className={`px-6 py-3 rounded-lg font-medium transition-colors flex items-center gap-2 ${
-                activeTab === tab 
+                activeTab === tab.id 
                   ? 'bg-teal text-white' 
                   : 'text-gray-700 hover:bg-gray-100'
               }`}
             >
-              {tab === 'chat' && <MessageSquare className="w-4 h-4" />}
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              {tab.icon && <tab.icon className="w-4 h-4" />}
+              {tab.label}
             </button>
           ))}
         </div>
@@ -182,17 +189,17 @@ function App() {
                   <div className="font-medium text-charcoal">Chat with JARVIS</div>
                   <div className="text-sm text-gray-600">AI assistant</div>
                 </button>
-                <button onClick={() => setActiveTab('email')} className="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors text-left">
+                <button className="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors text-left">
                   <Mail className="w-6 h-6 text-teal mb-2" />
                   <div className="font-medium text-charcoal">Check Email</div>
                   <div className="text-sm text-gray-600">All accounts</div>
                 </button>
-                <button onClick={() => setActiveTab('calendar')} className="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors text-left">
+                <button className="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors text-left">
                   <Calendar className="w-6 h-6 text-lavender mb-2" />
                   <div className="font-medium text-charcoal">View Calendar</div>
                   <div className="text-sm text-gray-600">Week view</div>
                 </button>
-                <button onClick={() => setActiveTab('meetings')} className="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors text-left">
+                <button className="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors text-left">
                   <Users className="w-6 h-6 text-sage mb-2" />
                   <div className="font-medium text-charcoal">Schedule Meeting</div>
                   <div className="text-sm text-gray-600">With AI assist</div>
@@ -237,7 +244,7 @@ function App() {
             <div className="text-center py-12 text-gray-500">
               <Mail className="w-16 h-16 mx-auto mb-4 text-gray-300" />
               <p className="text-lg">Email interface coming soon</p>
-              <p className="text-sm">Use "Clean Spam Now" button above or ask JARVIS in Chat</p>
+              <p className="text-sm">Use "Clean Spam Now" button above for bulk cleanup</p>
             </div>
           </div>
         )}
@@ -247,7 +254,7 @@ function App() {
             <div key={tab} className="bg-white rounded-xl p-8 shadow-sm border border-gray-100 text-center">
               <h2 className="text-2xl font-bold text-charcoal mb-4 capitalize">{tab}</h2>
               <p className="text-gray-500">Interface under development</p>
-              <p className="text-sm text-gray-400 mt-2">API is fully functional - Try asking JARVIS in the Chat tab!</p>
+              <p className="text-sm text-gray-400 mt-2">API is fully functional - UI coming soon</p>
             </div>
           )
         ))}
