@@ -1,50 +1,52 @@
 #!/usr/bin/env bash
-# Complete one-shot installation for Mac
+# Executive Assistant - Production Installation for Mac M1/M2/M3/M4
+# Uses virtual environment (Apple's recommended approach)
+
+set -e
 
 echo "╔════════════════════════════════════════════════════════════╗"
 echo "║       EXECUTIVE ASSISTANT - MAC INSTALLATION               ║"
 echo "╚════════════════════════════════════════════════════════════╝"
 echo ""
 
-# Check if running on Mac
+# Check macOS
 if [[ "$OSTYPE" != "darwin"* ]]; then
     echo "❌ This installer is for macOS only"
     exit 1
 fi
 
-# Check for Homebrew
 echo "📦 Step 1/5: Checking for Homebrew..."
 if ! command -v brew &> /dev/null; then
     echo "Installing Homebrew..."
     /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    
-    # Add Homebrew to PATH
-    echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
-    eval "$(/opt/homebrew/bin/brew shellenv)"
+    if [[ -f /opt/homebrew/bin/brew ]]; then
+        echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
+        eval "$(/opt/homebrew/bin/brew shellenv)"
+    fi
 fi
 echo "✅ Homebrew installed"
 
-# Install dependencies
 echo ""
 echo "📦 Step 2/5: Installing Python and Ollama..."
-brew install python@3.11 ollama git
+brew install python@3 ollama git 2>/dev/null || true
 
-# Install Python packages
 echo ""
-echo "📦 Step 3/5: Installing Python packages..."
-pip3 install -r server/requirements.txt
+echo "📦 Step 3/5: Creating Python virtual environment..."
+python3 -m venv ~/.executive-assistant-env
+source ~/.executive-assistant-env/bin/activate
+pip install --upgrade pip
+pip install -r server/requirements.txt
+echo "✅ Python packages installed in virtual environment"
 
-# Start Ollama
 echo ""
 echo "🤖 Step 4/5: Starting Ollama and downloading AI model..."
-brew services start ollama
-sleep 3
-
-# Download AI model
-echo "   (This downloads ~4GB, may take several minutes...)"
+pkill ollama 2>/dev/null || true
+sleep 2
+ollama serve > /dev/null 2>&1 &
+sleep 5
+echo "   Downloading AI model (~4GB, may take 5-10 minutes)..."
 ollama pull qwen2.5:7b-instruct
 
-# Create data directories
 echo ""
 echo "📁 Step 5/5: Creating data directories..."
 mkdir -p ~/Library/Application\ Support/ExecutiveAssistant/data/{calendar,contacts,notes,documents,templates,config,intelligence,logs}
@@ -54,8 +56,10 @@ echo "╔═══════════════════════�
 echo "║              ✅ INSTALLATION COMPLETE! ✅                  ║"
 echo "╚════════════════════════════════════════════════════════════╝"
 echo ""
-echo "Next steps:"
-echo "  1. Add your email accounts: ./setup_accounts.sh"
-echo "  2. Start the assistant: ./start_server.sh"
-echo "  3. Open browser to: http://localhost:8000"
+echo "🎉 Your Executive Assistant is ready!"
+echo ""
+echo "To start:"
+echo "  ./start_server.sh"
+echo ""
+echo "Then open: http://localhost:8000"
 echo ""
