@@ -17,7 +17,7 @@ requests==2.31.0
 # Document Generation
 python-docx==1.1.0
 python-pptx==0.6.23
-Pillow==10.1.0
+Pillow>=10.0.0
 svgwrite==1.4.3
 
 # Calendar (CalDAV)
@@ -27,9 +27,6 @@ icalendar==5.0.11
 # Utilities
 keyring==24.3.0
 cryptography==41.0.7
-
-# AI/LLM
-httpx==0.25.2
 
 # Data handling
 python-dateutil==2.8.2
