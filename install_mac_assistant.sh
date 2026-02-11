@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Executive Assistant - Production Installation for Mac M1/M2/M3/M4
-# Uses virtual environment (Apple's recommended approach)
+# Uses Python 3.13 (3.14 has package compatibility issues)
 
 set -e
 
@@ -9,7 +9,6 @@ echo "║       EXECUTIVE ASSISTANT - MAC INSTALLATION               ║"
 echo "╚════════════════════════════════════════════════════════════╝"
 echo ""
 
-# Check macOS
 if [[ "$OSTYPE" != "darwin"* ]]; then
     echo "❌ This installer is for macOS only"
     exit 1
@@ -27,16 +26,16 @@ fi
 echo "✅ Homebrew installed"
 
 echo ""
-echo "📦 Step 2/5: Installing Python and Ollama..."
-brew install python@3 ollama git 2>/dev/null || true
+echo "📦 Step 2/5: Installing Python 3.13 and Ollama..."
+brew install python@3.13 ollama git 2>/dev/null || true
 
 echo ""
 echo "📦 Step 3/5: Creating Python virtual environment..."
-python3 -m venv ~/.executive-assistant-env
+/opt/homebrew/bin/python3.13 -m venv ~/.executive-assistant-env
 source ~/.executive-assistant-env/bin/activate
 pip install --upgrade pip
 pip install -r server/requirements.txt
-echo "✅ Python packages installed in virtual environment"
+echo "✅ Python packages installed"
 
 echo ""
 echo "🤖 Step 4/5: Starting Ollama and downloading AI model..."
@@ -55,8 +54,6 @@ echo ""
 echo "╔════════════════════════════════════════════════════════════╗"
 echo "║              ✅ INSTALLATION COMPLETE! ✅                  ║"
 echo "╚════════════════════════════════════════════════════════════╝"
-echo ""
-echo "🎉 Your Executive Assistant is ready!"
 echo ""
 echo "To start:"
 echo "  ./start_server.sh"
