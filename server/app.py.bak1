@@ -1,6 +1,11 @@
 """
-Updated FastAPI application with Phase 3 integration
-Location: server/app.py (REPLACE EXISTING)
+FastAPI application adapted for native macOS Ollama usage.
+
+- Binds to localhost only
+- Uses server/security.require_api_key to protect function endpoints
+- Provides lightweight status & health endpoints for launchd checks
+- EMAIL CLEANUP: Yahoo IMAP + AI spam detection endpoints
+- FULL EA CAPABILITIES: Calendar, contacts, meetings, documents, notes
 """
 import os
 import logging
@@ -18,11 +23,8 @@ from server.llm.ollama_adapter import OllamaAdapter
 from server.connectors.yahoo_connector import YahooConnector
 from server.spam_detector import SpamDetector
 
-# Phase 2: Assistant functions
+# Import assistant functions (Phase 2)
 from server import assistant_functions
-
-# Phase 3: Account management
-from server.managers.account_manager import AccountManager
 
 logger = logging.getLogger("executive_assistant")
 logging.basicConfig(level=logging.INFO)
@@ -39,60 +41,54 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Service instances
+# Ollama adapter instance
 ollama = OllamaAdapter()
+
+# Spam detector instance
 spam_detector = SpamDetector()
-account_mgr = AccountManager()
 
 
 def verify_key(x_api_key: Optional[str] = Header(None)):
-    """FastAPI dependency that verifies X-API-Key header"""
+    """
+    FastAPI dependency that verifies X-API-Key header using server.security.require_api_key.
+    """
     require_api_key(x_api_key)
+
+
+def load_email_account(account_id: str) -> Dict:
+    """Load email account configuration"""
+    # TODO: Implement secure credential storage (Phase 3)
+    # For now, return test account
+    return {
+        "email": os.environ.get("TEST_EMAIL", "cdgray33@yahoo.com"),
+        "app_password": os.environ.get("TEST_APP_PASSWORD", ""),
+        "provider": "yahoo"
+    }
 
 
 # ==================== PYDANTIC MODELS ====================
 
-# Legacy models (Phase 1)
 class ConnectRequest(BaseModel):
     account_id: str
 
+
 class CategorizeRequest(BaseModel):
     emails: List[Dict]
+
 
 class DeleteRequest(BaseModel):
     account_id: str
     email_ids: List[str]
     permanent: bool = False
 
-# Phase 3 models
-class AddAccountOAuthRequest(BaseModel):
-    account_id: str
-    provider: str  # 'gmail' or 'hotmail'
-    email: str
-    client_id: str
-    client_secret: str
-
-class AddAccountPasswordRequest(BaseModel):
-    account_id: str
-    provider: str  # 'yahoo', 'comcast', or 'apple'
-    email: str
-    app_password: str
-
-class RemoveAccountRequest(BaseModel):
-    account_id: str
-
 
 # ==================== HEALTH & STATUS ENDPOINTS ====================
 
 @app.get("/health")
 async def health():
-    """Service health endpoint"""
+    """Service health endpoint suitable for launchd or supervisor checks."""
     healthy = ollama.ping()
-    return {
-        "status": "healthy" if healthy else "degraded",
-        "ollama": healthy,
-        "accounts_configured": len(account_mgr.vault.list_accounts())
-    }
+    return {"status": "healthy" if healthy else "degraded", "ollama": healthy}
 
 
 @app.get("/api/status")
@@ -101,15 +97,13 @@ async def api_status():
         "status": "ok",
         "host": "local",
         "user": os.environ.get("USER", "unknown"),
-        "functions_available": len(assistant_functions.FUNCTION_REGISTRY),
-        "accounts": len(account_mgr.vault.list_accounts()),
-        "phase": "3 - Multi-email connectors"
+        "functions_available": len(assistant_functions.FUNCTION_REGISTRY)
     }
 
 
 @app.get("/api/models", dependencies=[Depends(verify_key)])
 async def api_models():
-    """List models available to Ollama"""
+    """List models available to the local Ollama runtime. Requires API key if configured."""
     models = ollama.list_models()
     return {"models": models}
 
@@ -120,6 +114,14 @@ async def api_models():
 async def function_call(payload: Dict[str, Any]):
     """
     Central function calling endpoint - routes to all EA capabilities
+    
+    Handles calls from Open WebUI via Ollama for:
+    - Email management
+    - Calendar operations
+    - Contact management
+    - Meeting orchestration
+    - Document generation
+    - Notes and tasks
     """
     try:
         name = payload.get("name") or payload.get("function_name")
@@ -150,100 +152,34 @@ async def list_functions():
     }
 
 
-# ==================== ACCOUNT MANAGEMENT ENDPOINTS (Phase 3) ====================
-
-@app.post("/api/accounts/add/oauth", dependencies=[Depends(verify_key)])
-async def add_account_oauth(request: AddAccountOAuthRequest):
-    """
-    Add an OAuth2-based email account (Gmail or Hotmail)
-    This will open a browser window for authorization
-    """
-    try:
-        result = account_mgr.add_account_oauth(
-            account_id=request.account_id,
-            provider=request.provider,
-            email=request.email,
-            client_id=request.client_id,
-            client_secret=request.client_secret
-        )
-        return result
-    except Exception as e:
-        logger.error(f"Add OAuth account error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/accounts/add/password", dependencies=[Depends(verify_key)])
-async def add_account_password(request: AddAccountPasswordRequest):
-    """
-    Add a password-based email account (Yahoo, Comcast, Apple)
-    """
-    try:
-        result = account_mgr.add_account_password(
-            account_id=request.account_id,
-            provider=request.provider,
-            email=request.email,
-            app_password=request.app_password
-        )
-        return result
-    except Exception as e:
-        logger.error(f"Add password account error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.delete("/api/accounts/{account_id}", dependencies=[Depends(verify_key)])
-async def remove_account(account_id: str):
-    """Remove an email account"""
-    try:
-        result = account_mgr.remove_account(account_id)
-        return result
-    except Exception as e:
-        logger.error(f"Remove account error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/accounts", dependencies=[Depends(verify_key)])
-async def list_accounts():
-    """List all configured email accounts"""
-    try:
-        result = account_mgr.list_accounts()
-        return result
-    except Exception as e:
-        logger.error(f"List accounts error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/accounts/test", dependencies=[Depends(verify_key)])
-async def test_all_accounts():
-    """Test connectivity for all accounts"""
-    try:
-        result = account_mgr.test_all_accounts()
-        return result
-    except Exception as e:
-        logger.error(f"Test accounts error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ==================== LEGACY EMAIL ENDPOINTS (Phase 1 - Testing) ====================
+# ==================== EMAIL CLEANUP ENDPOINTS (Legacy/Testing) ====================
+# These are kept for direct testing, but function_call is the primary interface
 
 @app.post("/api/email/connect")
 async def connect_email(request: ConnectRequest):
-    """Legacy: Test connection to Yahoo account"""
+    """Test connection to Yahoo account and return mailbox stats"""
     try:
-        # This endpoint now uses account manager
-        connector = account_mgr.get_connector(request.account_id, cache=False)
+        account = load_email_account(request.account_id)
+
+        connector = YahooConnector(
+            email_address=account["email"],
+            app_password=account["app_password"]
+        )
+
         success, message = connector.connect()
-        
         if not success:
             raise HTTPException(status_code=401, detail=message)
-        
+
         stats = connector.get_mailbox_stats()
         connector.disconnect()
-        
+
         return {
             "success": True,
             "account_id": request.account_id,
+            "email": account["email"],
             "stats": stats
         }
+
     except Exception as e:
         logger.error(f"Connection error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -251,22 +187,28 @@ async def connect_email(request: ConnectRequest):
 
 @app.get("/api/email/preview")
 async def preview_emails(account_id: str, count: int = 100, oldest_first: bool = True):
-    """Legacy: Preview emails from inbox"""
+    """Preview emails from inbox (oldest first by default for spam cleanup)"""
     try:
-        connector = account_mgr.get_connector(account_id, cache=False)
+        account = load_email_account(account_id)
+
+        connector = YahooConnector(
+            email_address=account["email"],
+            app_password=account["app_password"]
+        )
+
         success, message = connector.connect()
-        
         if not success:
             raise HTTPException(status_code=401, detail=message)
-        
+
         emails = connector.preview_emails(count=count, oldest_first=oldest_first)
         connector.disconnect()
-        
+
         return {
             "success": True,
             "count": len(emails),
             "emails": emails
         }
+
     except Exception as e:
         logger.error(f"Preview error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -274,14 +216,15 @@ async def preview_emails(account_id: str, count: int = 100, oldest_first: bool =
 
 @app.post("/api/email/categorize")
 async def categorize_emails(request: CategorizeRequest):
-    """Legacy: Use AI to categorize emails"""
+    """Use AI (Ollama) to categorize emails as spam/keep/unsure"""
     try:
         categorized = spam_detector.batch_categorize(request.emails)
-        
+
+        # Count results
         spam_count = sum(1 for e in categorized if e.get("category") == "spam")
         keep_count = sum(1 for e in categorized if e.get("category") == "keep")
         unsure_count = sum(1 for e in categorized if e.get("category") == "unsure")
-        
+
         return {
             "success": True,
             "total": len(categorized),
@@ -290,6 +233,7 @@ async def categorize_emails(request: CategorizeRequest):
             "unsure_count": unsure_count,
             "emails": categorized
         }
+
     except Exception as e:
         logger.error(f"Categorization error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -297,21 +241,28 @@ async def categorize_emails(request: CategorizeRequest):
 
 @app.post("/api/email/delete")
 async def delete_emails(request: DeleteRequest):
-    """Legacy: Delete specified emails"""
+    """Delete specified emails (soft delete by default, permanent if requested)"""
     try:
-        connector = account_mgr.get_connector(request.account_id, cache=False)
+        account = load_email_account(request.account_id)
+
+        connector = YahooConnector(
+            email_address=account["email"],
+            app_password=account["app_password"]
+        )
+
         success, message = connector.connect()
-        
         if not success:
             raise HTTPException(status_code=401, detail=message)
-        
+
         result = connector.delete_emails(
             email_ids=request.email_ids,
             permanent=request.permanent
         )
-        
+
         connector.disconnect()
+
         return result
+
     except Exception as e:
         logger.error(f"Delete error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -319,22 +270,29 @@ async def delete_emails(request: DeleteRequest):
 
 @app.get("/api/email/stats")
 async def get_email_stats(account_id: str):
-    """Legacy: Get mailbox statistics"""
+    """Get mailbox statistics (total, unread, etc.)"""
     try:
-        connector = account_mgr.get_connector(account_id, cache=False)
+        account = load_email_account(account_id)
+
+        connector = YahooConnector(
+            email_address=account["email"],
+            app_password=account["app_password"]
+        )
+
         success, message = connector.connect()
-        
         if not success:
             raise HTTPException(status_code=401, detail=message)
-        
+
         stats = connector.get_mailbox_stats()
         connector.disconnect()
-        
+
         return {
             "success": True,
             "account_id": account_id,
+            "email": account["email"],
             "stats": stats
         }
+
     except Exception as e:
         logger.error(f"Stats error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

@@ -16,7 +16,7 @@ import httpx
 logger = logging.getLogger("ollama_adapter")
 OLLAMA_HTTP = os.environ.get("OLLAMA_HTTP", "http://127.0.0.1:11434")
 OLLAMA_CLI = os.environ.get("OLLAMA_BIN", "ollama")
-HTTP_TIMEOUT = float(os.environ.get("OLLAMA_HTTP_TIMEOUT", "5.0"))
+HTTP_TIMEOUT = float(os.environ.get("OLLAMA_HTTP_TIMEOUT", "120.0"))
 
 
 class OllamaAdapter:
@@ -30,6 +30,7 @@ class OllamaAdapter:
             # Try HTTP health
             r = self.client.get("/api/health")
             if r.status_code == 200:
+                logger.info("? Ollama HTTP API is available")
                 return True
         except Exception as e:
             logger.debug("Ollama HTTP health check failed: %s", e)
@@ -40,9 +41,9 @@ class OllamaAdapter:
     def list_models(self) -> List[Dict[str, Any]]:
         """Return list of available models (HTTP if possible, else CLI parsing)."""
         try:
-            r = self.client.get("/api/models")
+            r = self.client.get("/api/tags")
             if r.status_code == 200:
-                return r.json()
+                return r.json().get('models', [])
         except Exception as e:
             logger.debug("Ollama HTTP list models failed: %s", e)
 
@@ -73,27 +74,67 @@ class OllamaAdapter:
             logger.debug("Ollama CLI list failed: %s", e)
             return []
 
-    def generate(self, model: str, prompt: str, **kwargs) -> Dict[str, Any]:
+    def generate(self, model: str, prompt: str, **kwargs) -> str:
         """
-        Simple generation helper that tries HTTP /api/generate (Ollama) first,
-        then falls back to the CLI if needed.
+        Generate text using Ollama. Returns the generated text as a string.
+        Tries HTTP /api/generate first, then falls back to CLI.
         """
-        payload = {"model": model, "prompt": prompt}
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "stream": False  # Important: disable streaming for simple response
+        }
         payload.update(kwargs)
-        # Try HTTP endpoint (Ollama's HTTP API can differ between versions; adjust if needed)
+        
+        # Try HTTP endpoint
         try:
-            r = self.client.post("/api/generate", json=payload)
-            if r.status_code in (200, 201):
-                return r.json()
+            print(f"?? Attempting HTTP POST to {self.base_url}/api/generate")
+            print(f"?? Payload: model={model}, prompt_length={len(prompt)} chars, timeout={HTTP_TIMEOUT}s")
+            
+            r = self.client.post("/api/generate", json=payload, timeout=120.0)
+            
+            print(f"?? HTTP Response Status: {r.status_code}")
+            print(f"?? HTTP Response Body (first 500 chars): {r.text[:500]}")
+            
+            if r.status_code == 200:
+                response_data = r.json()
+                result = response_data.get('response', '')
+                print(f"? HTTP Success! Got {len(result)} chars")
+                return result
+            else:
+                print(f"? HTTP failed with status {r.status_code}")
+                
+        except httpx.TimeoutException as e:
+            print(f"?? HTTP request timed out after {HTTP_TIMEOUT}s: {e}")
+            logger.error(f"Ollama HTTP timeout: {e}")
+        except httpx.ConnectError as e:
+            print(f"?? Connection error - is Ollama running at {self.base_url}? {e}")
+            logger.error(f"Ollama HTTP connection error: {e}")
         except Exception as e:
+            print(f"? HTTP request exception: {type(e).__name__}: {e}")
             logger.debug("Ollama HTTP generate failed: %s", e)
 
-        # CLI fallback: use `ollama run <model> --prompt '<prompt>'` (simple)
+        # CLI fallback: use `ollama run <model> '<prompt>'`
+        print(f"?? Falling back to CLI: {OLLAMA_CLI}")
         try:
-            cmd = [OLLAMA_CLI, "run", model, "--prompt", prompt]
-            out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=60)
-            text = out.decode("utf-8", errors="ignore")
-            return {"output": text}
+            cmd = [OLLAMA_CLI, "run", model, prompt]
+            print(f"?? Running command: {' '.join(cmd[:3])}... (prompt truncated)")
+            out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=120)
+            text = out.decode("utf-8", errors="ignore").strip()
+            print(f"? CLI Success! Got {len(text)} chars")
+            return text
+        except FileNotFoundError as e:
+            error_msg = f"ERROR: Ollama CLI not found at '{OLLAMA_CLI}'. Install Ollama or set OLLAMA_BIN environment variable."
+            print(f"? {error_msg}")
+            logger.error(error_msg)
+            return error_msg
+        except subprocess.TimeoutExpired as e:
+            error_msg = f"ERROR: CLI command timed out after 120s"
+            print(f"?? {error_msg}")
+            logger.error(error_msg)
+            return error_msg
         except Exception as e:
-            logger.debug("Ollama CLI generate failed: %s", e)
-            return {"error": "generate_failed", "detail": str(e)}
+            error_msg = f"ERROR: {str(e)}"
+            print(f"? CLI failed: {error_msg}")
+            logger.error("Ollama CLI generate failed: %s", e)
+            return error_msg
