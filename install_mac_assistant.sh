@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 set -e
 mkdir -p "$HOME/ExecutiveAssistant/updates" "$HOME/ExecutiveAssistant/backups" "$HOME/ExecutiveAssistant/logs"
 cat > "$HOME/ExecutiveAssistant/config.env" <<CFG
