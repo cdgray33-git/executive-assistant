@@ -338,3 +338,18 @@ async def get_email_stats(account_id: str):
     except Exception as e:
         logger.error(f"Stats error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+# Serve React UI
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+import os
+
+ui_dist = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ui", "dist")
+
+if os.path.exists(ui_dist):
+    # Serve static assets
+    app.mount("/assets", StaticFiles(directory=os.path.join(ui_dist, "assets")), name="assets")
+    
+    # Serve index.html at root
+    @app.get("/")
+    async def serve_ui():
+        return FileResponse(os.path.join(ui_dist, "index.html"))
