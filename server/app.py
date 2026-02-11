@@ -17,6 +17,11 @@ from server.security import require_api_key
 from server.llm.ollama_adapter import OllamaAdapter
 from server.connectors.yahoo_connector import YahooConnector
 from server.spam_detector import SpamDetector
+from server.agent import ExecutiveAgent
+
+# Initialize agent
+agent = ExecutiveAgent()
+
 
 # Phase 2: Assistant functions
 from server import assistant_functions
@@ -338,6 +343,49 @@ async def get_email_stats(account_id: str):
     except Exception as e:
         logger.error(f"Stats error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== CHAT ENDPOINT (JARVIS Interface) ====================
+
+class ChatRequest(BaseModel):
+    message: str
+    reset: bool = False
+
+@app.post("/api/chat", dependencies=[Depends(verify_key)])
+async def chat_with_agent(request: ChatRequest):
+    """
+    Chat with JARVIS - the conversational AI assistant
+    Supports function calling and multi-turn conversations
+    """
+    try:
+        if request.reset:
+            agent.reset_conversation()
+            return {
+                "status": "success",
+                "message": "Conversation reset. How can I help you?"
+            }
+        
+        # Process message through agent
+        result = await agent.chat(request.message)
+        
+        return {
+            "status": "success",
+            **result
+        }
+        
+    except Exception as e:
+        logger.error(f"Chat error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/chat/history", dependencies=[Depends(verify_key)])
+async def get_chat_history():
+    """Get conversation history"""
+    return {
+        "status": "success",
+        "history": agent.conversation_history,
+        "count": len(agent.conversation_history)
+    }
+
+
 # Serve React UI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
