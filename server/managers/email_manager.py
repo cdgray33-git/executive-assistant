@@ -419,3 +419,205 @@ Write a clear, professional email. Include appropriate greeting and closing."""
                 logger.error(f"Error categorizing account {account_id}: {e}")
         
         return results
+    def ensure_folders_exist(self, account_id: str) -> Dict[str, Any]:
+        """
+        Create email folders/labels for all categories if they don't exist
+        Works with IMAP (Yahoo, Apple, Comcast) - creates folders
+        Gmail/Hotmail use labels (handled differently)
+        
+        Args:
+            account_id: Email account to set up folders for
+            
+        Returns:
+            {
+                "status": "success"|"error",
+                "account_id": str,
+                "folders_created": [list of new folders],
+                "folders_existing": [list of existing folders],
+                "provider": "yahoo"|"gmail"|etc
+            }
+        """
+        try:
+            connector = self.account_mgr.get_connector(account_id)
+            success, msg = connector.connect()
+            
+            if not success:
+                return {"status": "error", "error": msg}
+            
+            provider = connector.provider if hasattr(connector, 'provider') else 'unknown'
+            
+            # Get existing folders
+            if hasattr(connector, 'list_folders'):
+                existing_folders = connector.list_folders()
+            else:
+                # Fallback for connectors without list_folders
+                try:
+                    import imaplib
+                    if hasattr(connector, 'imap'):
+                        _, folder_list = connector.imap.list()
+                        existing_folders = [f.decode().split('"')[-2] for f in folder_list]
+                    else:
+                        existing_folders = []
+                except:
+                    existing_folders = []
+            
+            folders_created = []
+            folders_existing = []
+            
+            # Create folders for each category (except Inbox - that always exists)
+            for category in EMAIL_CATEGORIES:
+                if category == "Archive":
+                    continue  # Archive is usually built-in
+                
+                # Check if folder exists (case-insensitive)
+                folder_exists = any(category.lower() in str(f).lower() for f in existing_folders)
+                
+                if folder_exists:
+                    folders_existing.append(category)
+                else:
+                    # Create folder
+                    try:
+                        if hasattr(connector, 'create_folder'):
+                            connector.create_folder(category)
+                        elif hasattr(connector, 'imap'):
+                            # Direct IMAP folder creation
+                            connector.imap.create(category)
+                        folders_created.append(category)
+                        logger.info(f"Created folder: {category} in {account_id}")
+                    except Exception as e:
+                        logger.warning(f"Could not create folder {category}: {e}")
+            
+            connector.disconnect()
+            
+            return {
+                "status": "success",
+                "account_id": account_id,
+                "provider": provider,
+                "folders_created": folders_created,
+                "folders_existing": folders_existing,
+                "total_folders": len(EMAIL_CATEGORIES),
+                "message": f"Setup complete: {len(folders_created)} folders created, {len(folders_existing)} already existed"
+            }
+            
+        except Exception as e:
+            logger.error(f"Folder setup error for {account_id}: {e}")
+            return {
+                "status": "error",
+                "account_id": account_id,
+                "error": str(e)
+            }
+    
+    
+    def setup_all_accounts(self) -> Dict[str, Any]:
+        """
+        Ensure folders exist for ALL configured accounts
+        Run this on first launch or when adding new accounts
+        """
+        accounts = self.account_mgr.vault.list_accounts()
+        results = []
+        
+        for account_id in accounts:
+            result = self.ensure_folders_exist(account_id)
+            results.append(result)
+        
+        total_created = sum(len(r.get('folders_created', [])) for r in results)
+        
+        return {
+            "status": "success",
+            "accounts_processed": len(accounts),
+            "total_folders_created": total_created,
+            "results": results
+        }
+    def ensure_folders_exist(self, account_id: str) -> Dict[str, Any]:
+        """
+        Create email folders/labels for all categories if they don't exist
+        Works with IMAP (Yahoo, Apple, Comcast) - creates folders
+        
+        Args:
+            account_id: Email account to setup folders for
+            
+        Returns:
+            {"status": "success", "folders_created": [...], "folders_existing": [...]}
+        """
+        try:
+            connector = self.account_mgr.get_connector(account_id)
+            success, msg = connector.connect()
+            
+            if not success:
+                return {"status": "error", "error": msg}
+            
+            provider = connector.provider if hasattr(connector, 'provider') else 'unknown'
+            
+            # Get existing folders
+            existing_folders = []
+            try:
+                if hasattr(connector, 'list_folders'):
+                    existing_folders = connector.list_folders()
+                elif hasattr(connector, 'imap'):
+                    _, folder_list = connector.imap.list()
+                    existing_folders = [f.decode().split('"')[-2] for f in folder_list]
+            except:
+                pass
+            
+            folders_created = []
+            folders_existing = []
+            
+            # Create folders for each category (except Inbox/Archive - built-in)
+            for category in EMAIL_CATEGORIES:
+                if category in ["Archive"]:
+                    continue
+                
+                # Check if folder exists (case-insensitive)
+                folder_exists = any(category.lower() in str(f).lower() for f in existing_folders)
+                
+                if folder_exists:
+                    folders_existing.append(category)
+                else:
+                    # Create folder
+                    try:
+                        if hasattr(connector, 'create_folder'):
+                            connector.create_folder(category)
+                        elif hasattr(connector, 'imap'):
+                            connector.imap.create(category)
+                        folders_created.append(category)
+                        logger.info(f"Created folder: {category} in {account_id}")
+                    except Exception as e:
+                        logger.warning(f"Could not create folder {category}: {e}")
+            
+            connector.disconnect()
+            
+            return {
+                "status": "success",
+                "account_id": account_id,
+                "provider": provider,
+                "folders_created": folders_created,
+                "folders_existing": folders_existing,
+                "total_folders": len(EMAIL_CATEGORIES),
+                "message": f"Setup complete: {len(folders_created)} created, {len(folders_existing)} existed"
+            }
+            
+        except Exception as e:
+            logger.error(f"Folder setup error for {account_id}: {e}")
+            return {"status": "error", "account_id": account_id, "error": str(e)}
+    
+    
+    def setup_all_accounts(self) -> Dict[str, Any]:
+        """
+        Ensure folders exist for ALL configured accounts
+        Run this on first launch or when adding new accounts
+        """
+        accounts = self.account_mgr.vault.list_accounts()
+        results = []
+        
+        for account_id in accounts:
+            result = self.ensure_folders_exist(account_id)
+            results.append(result)
+        
+        total_created = sum(len(r.get('folders_created', [])) for r in results)
+        
+        return {
+            "status": "success",
+            "accounts_processed": len(accounts),
+            "total_folders_created": total_created,
+            "results": results
+        }

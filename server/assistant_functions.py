@@ -228,6 +228,28 @@ FUNCTION_REGISTRY = {
         },
         "function": lambda **k: doc_mgr.create_drawing(**k)
     }
+    ,
+    "cleanup_spam": {
+        "description": "Safely identify and move spam emails to trash (reversible, uses AI categorization)",
+        "parameters": {
+            "account_id": "Specific email account or None for all accounts (optional)",
+            "max_emails": "Maximum emails to process per account (default: 100, optional)",
+            "preview_only": "If true, show what would be deleted without deleting (default: false, optional)"
+        },
+        "function": lambda **k: email_mgr.cleanup_spam_safe(**k)
+    },
+    "setup_email_folders": {
+        "description": "Create organized email folders (Priority, Personal, Work, Finance, etc.) for all accounts",
+        "parameters": {},
+        "function": lambda **k: email_mgr.setup_all_accounts(**k)
+    },
+    "ensure_folders": {
+        "description": "Ensure email folders exist for a specific account",
+        "parameters": {
+            "account_id": "Email account ID to setup folders for"
+        },
+        "function": lambda **k: email_mgr.ensure_folders_exist(**k)
+    }
 }
 
 

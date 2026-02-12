@@ -387,6 +387,94 @@ async def get_chat_history():
 
 
 # Serve React UI
+
+# ==================== CONFIG ENDPOINTS ====================
+
+from server.config import get_config, save_config, update_config, reset_config
+
+@app.get("/api/config")
+async def get_user_config():
+    """Get user configuration (EA name, preferences, etc.)"""
+    try:
+        config = get_config()
+        return {
+            "status": "success",
+            "config": config
+        }
+    except Exception as e:
+        logger.error(f"Get config error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class ConfigUpdateRequest(BaseModel):
+    ea_name: Optional[str] = None
+    user_name: Optional[str] = None
+    banner_text: Optional[str] = None
+    model: Optional[str] = None
+    auto_cleanup: Optional[Dict] = None
+    ui_preferences: Optional[Dict] = None
+
+
+@app.post("/api/config")
+async def update_user_config(request: ConfigUpdateRequest):
+    """Update user configuration"""
+    try:
+        updates = request.dict(exclude_none=True)
+        config = update_config(updates)
+        return {
+            "status": "success",
+            "config": config,
+            "message": "Configuration updated successfully"
+        }
+    except Exception as e:
+        logger.error(f"Update config error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/config/reset")
+async def reset_user_config():
+    """Reset configuration to defaults"""
+    try:
+        config = reset_config()
+        return {
+            "status": "success",
+            "config": config,
+            "message": "Configuration reset to defaults"
+        }
+    except Exception as e:
+        logger.error(f"Reset config error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== ASSISTANT COMMAND ENDPOINT ====================
+
+class AssistantCommandRequest(BaseModel):
+    command: str
+    attachment: Optional[Dict] = None
+
+
+@app.post("/api/assistant/command", dependencies=[Depends(verify_key)])
+async def assistant_command(request: AssistantCommandRequest):
+    """
+    Unified NLP command interface with optional file attachment
+    Examples: "clean my spam", "check email", "edit this presentation"
+    """
+    try:
+        if request.attachment:
+            # Process with attachment
+            result = await agent.chat_with_attachment(request.command, request.attachment)
+        else:
+            # Regular chat
+            result = await agent.chat(request.command)
+        
+        return {
+            "status": "success",
+            **result
+        }
+    except Exception as e:
+        logger.error(f"Assistant command error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import os
