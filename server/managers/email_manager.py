@@ -621,3 +621,104 @@ Write a clear, professional email. Include appropriate greeting and closing."""
             "total_folders_created": total_created,
             "results": results
         }
+    def cleanup_spam_safe(self, max_emails=50, **kwargs):
+        """
+        AI-powered spam cleanup for Gmail accounts.
+        Moves detected spam to trash for user review (soft delete).
+        Similar to cleanup_spam.py but integrated with EmailManager.
+        """
+        from server.spam_detector import SpamDetector
+        from server.connectors.gmail_connector import GmailConnector
+        import logging
+        
+        logger = logging.getLogger("email_manager")
+        
+        try:
+            # Check all Gmail accounts for unread emails
+            check_result = self.check_all_accounts()
+            
+            if check_result.get("status") != "success":
+                return {"status": "error", "message": "Failed to check email accounts"}
+            
+            # Collect unread emails from all accounts
+            all_unread = []
+            for account_id, account_data in check_result.get("accounts", {}).items():
+                unread = account_data.get("unread_emails", [])
+                for email in unread:
+                    email["account_id"] = account_id
+                all_unread.extend(unread)
+            
+            if not all_unread:
+                return {
+                    "status": "success",
+                    "trashed_count": 0,
+                    "total_checked": 0,
+                    "message": "No unread emails to process"
+                }
+            
+            # Limit to max_emails
+            emails_to_check = all_unread[:max_emails]
+            
+            # Use AI spam detector (same as your cleanup_spam.py)
+            logger.info(f"Running AI spam detection on {len(emails_to_check)} emails...")
+            detector = SpamDetector()
+            categorized = detector.batch_categorize(emails_to_check)
+            
+            # Filter spam emails
+            spam_emails = [e for e in categorized if e.get("category") == "spam"]
+            
+            logger.info(f"AI detected {len(spam_emails)} spam emails out of {len(emails_to_check)}")
+            
+            if not spam_emails:
+                return {
+                    "status": "success",
+                    "trashed_count": 0,
+                    "total_checked": len(emails_to_check),
+                    "message": "No spam detected in this batch!"
+                }
+            
+            # Move spam to trash (soft delete like your Yahoo script does)
+            trashed_count = 0
+            failed_count = 0
+            
+            for email in spam_emails:
+                try:
+                    account_id = email.get("account_id")
+                    email_id = email.get("id")
+                    
+                    # Get Gmail connector
+                    gmail = GmailConnector(account_id)
+                    
+                    # Trash the email (moves to Trash, NOT permanent)
+                    gmail.service.users().messages().trash(
+                        userId='me',
+                        id=email_id
+                    ).execute()
+                    
+                    trashed_count += 1
+                    logger.info(f"Trashed: {email.get('subject')} from {email.get('from')}")
+                    
+                except Exception as e:
+                    failed_count += 1
+                    logger.error(f"Failed to trash email {email_id}: {e}")
+            
+            return {
+                "status": "success",
+                "trashed_count": trashed_count,
+                "failed_count": failed_count,
+                "total_checked": len(emails_to_check),
+                "spam_found": len(spam_emails),
+                "spam_details": [
+                    {
+                        "from": e.get("from"),
+                        "subject": e.get("subject"),
+                        "reasoning": e.get("reasoning")
+                    }
+                    for e in spam_emails[:5]
+                ],
+                "message": f"AI detected {len(spam_emails)} spam emails. Moved {trashed_count} to Trash for review. {failed_count} failed."
+            }
+            
+        except Exception as e:
+            logger.error(f"Cleanup spam safe failed: {e}")
+            return {"status": "error", "message": str(e)}
