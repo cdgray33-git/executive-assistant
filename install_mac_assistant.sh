@@ -38,6 +38,26 @@ pip install -r server/requirements.txt
 echo "✅ Python packages installed"
 
 echo ""
+echo ""
+echo "🎨 Step 4/6: Building React UI..."
+if ! command -v node &> /dev/null; then
+    echo "Installing Node.js..."
+    brew install node
+fi
+echo "✅ Node.js installed"
+
+cd ui-build
+echo "   Installing UI dependencies..."
+npm install --silent
+echo "   Building production UI..."
+npm run build
+echo "   Deploying to server..."
+rm -rf ../ui/dist/*
+mkdir -p ../ui/dist
+cp -r dist/* ../ui/dist/
+cd ..
+echo "✅ UI built and deployed"
+
 echo "🤖 Step 4/5: Starting Ollama and downloading AI model..."
 pkill ollama 2>/dev/null || true
 sleep 2
