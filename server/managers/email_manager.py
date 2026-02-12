@@ -85,7 +85,7 @@ class EmailManager:
         subject = email.get("subject", "").lower()
         
         # Check if spam
-        spam_result = self.spam_detector.categorize_message(
+        spam_result = self.spam_detector.categorize_email(
             subject=email.get("subject", ""),
             sender=email.get("from", ""),
             body=email.get("body", "")
