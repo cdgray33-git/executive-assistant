@@ -15,11 +15,10 @@ logger = logging.getLogger("agent")
 class ExecutiveAgent:
     """JARVIS-style conversational agent with function calling"""
     
-    def __init__(self, model: str = "llama3.2:latest"):
-        self.model = model
-        self.conversation_history = []
-        self.system_prompt = self._build_system_prompt()
-        
+    def __init__(self, model: str = None):
+        from server.config import get_config
+        config = get_config()
+        self.model = model or config.get('model', 'qwen2.5:7b-instruct')        
     def _build_system_prompt(self) -> str:
         """Build system prompt with available functions"""
         functions_desc = "\n".join([
@@ -191,55 +190,6 @@ Always be concise but thorough. If you need more information, ask."""
                 "timestamp": datetime.now().isoformat()
             }
     
-
-    async def chat_with_attachment(self, user_message: str, attachment: Dict) -> Dict[str, Any]:
-        """
-        Process message with file attachment
-        
-        Args:
-            user_message: User text message
-            attachment: {"name": str, "type": str, "size": int, "data": str (base64)}
-        
-        Returns: Same as chat() but with attachment processing
-        """
-        try:
-            import base64
-            file_data = base64.b64decode(attachment["data"])
-            file_name = attachment["name"]
-            file_ext = file_name.split(".")[-1].lower()
-            
-            attachment_context = ""
-            
-            if file_ext in ["txt", "md"]:
-                text_preview = file_data.decode("utf-8", errors="ignore")[:2000]
-                attachment_context = "\n\n[File: " + file_name + "]:\n" + text_preview
-            elif file_ext in ["pdf"]:
-                attachment_context = "\n\n[PDF: " + file_name + "] - Use document_generator"
-            elif file_ext in ["pptx", "ppt"]:
-                attachment_context = "\n\n[PowerPoint: " + file_name + "] - Edit via document functions"
-            elif file_ext in ["docx", "doc"]:
-                attachment_context = "\n\n[Word: " + file_name + "] - Edit via document functions"
-            elif file_ext in ["xlsx", "xls"]:
-                attachment_context = "\n\n[Excel: " + file_name + "] - Data analysis available"
-            elif file_ext in ["jpg", "jpeg", "png", "gif"]:
-                attachment_context = "\n\n[Image: " + file_name + "] - Analysis available"
-            else:
-                attachment_context = "\n\n[File: " + file_name + ", type: " + file_ext + "]"
-            
-            enhanced_message = user_message + attachment_context
-            result = await self.chat(enhanced_message)
-            result["attachment_processed"] = {"name": file_name, "type": file_ext, "size": attachment["size"]}
-            
-            return result
-            
-        except Exception as e:
-            logger.error(f"Attachment error: {e}")
-            return {
-                "response": f"Error processing attachment: {str(e)}",
-                "error": str(e),
-                "timestamp": datetime.now().isoformat()
-            }
-
     def reset_conversation(self):
         """Clear conversation history"""
         self.conversation_history = []
