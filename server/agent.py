@@ -18,7 +18,10 @@ class ExecutiveAgent:
     def __init__(self, model: str = None):
         from server.config import get_config
         config = get_config()
-        self.model = model or config.get('model', 'qwen2.5:7b-instruct')        
+        self.model = model or config.get("model", "qwen2.5:7b-instruct")
+        self.conversation_history = []
+        self.system_prompt = self._build_system_prompt()
+
     def _build_system_prompt(self) -> str:
         """Build system prompt with available functions"""
         functions_desc = "\n".join([
