@@ -617,86 +617,146 @@ Write a clear, professional email. Include appropriate greeting and closing."""
             "total_folders_created": total_created,
             "results": results
         }
-    def cleanup_spam_safe(self, max_emails=50, **kwargs):
+    def cleanup_spam_safe(self, account_id=None, max_emails=50, **kwargs):
         """
-        AI-powered spam cleanup for Gmail accounts.
-        Moves detected spam to trash for user review (soft delete).
-        Similar to cleanup_spam.py but integrated with EmailManager.
+        Universal AI-powered spam cleanup for ANY email provider.
+        Works with: Yahoo, Gmail, Hotmail, Comcast, Apple iCloud, IMAP
         """
         from server.spam_detector import SpamDetector
-        from server.connectors.gmail_connector import GmailConnector
         import logging
         
         logger = logging.getLogger("email_manager")
         
         try:
-            # Check all Gmail accounts for unread emails
-            check_result = self.check_all_accounts()
+            # Get accounts to process
+            if account_id:
+                accounts_to_check = [account_id]
+            else:
+                accounts_to_check = [acc["id"] for acc in self.config.get("accounts", [])]
             
-            if check_result.get("status") != "success":
-                return {"status": "error", "message": "Failed to check email accounts"}
+            if not accounts_to_check:
+                return {"status": "error", "message": "No email accounts configured"}
             
-            # Collect unread emails from all accounts
-            all_unread = []
-            for account_id, account_data in check_result.get("accounts", {}).items():
-                unread = account_data.get("unread_emails", [])
-                for email in unread:
-                    email["account_id"] = account_id
-                all_unread.extend(unread)
+            all_emails = []
+            connectors = {}
             
-            if not all_unread:
+            # Fetch emails from each account
+            for acc_id in accounts_to_check:
+                try:
+                    logger.info(f"Fetching emails from {acc_id}...")
+                    
+                    # Get the appropriate connector
+                    connector = self._get_connector(acc_id)
+                    
+                    if not connector:
+                        logger.warning(f"Could not get connector for {acc_id}")
+                        continue
+                    
+                    # Connect
+                    success, msg = connector.connect()
+                    if not success:
+                        logger.error(f"Failed to connect to {acc_id}: {msg}")
+                        continue
+                    
+                    logger.info(f"✅ Connected to {acc_id}")
+                    
+                    # Fetch emails (handle Yahoo's different parameter)
+                    try:
+                        emails = connector.preview_emails(count=max_emails, oldest_first=True)
+                    except TypeError:
+                        # Yahoo connector doesn't have oldest_first, use folder instead
+                        emails = connector.preview_emails(count=max_emails, folder="INBOX")
+                    
+                    logger.info(f"Retrieved {len(emails)} emails from {acc_id}")
+                    
+                    # Tag with account info
+                    for email in emails:
+                        email["account_id"] = acc_id
+                    
+                    all_emails.extend(emails)
+                    connectors[acc_id] = connector
+                    
+                except Exception as e:
+                    logger.error(f"Error fetching from {acc_id}: {e}", exc_info=True)
+                    continue
+            
+            if not all_emails:
+                self._cleanup_connectors(connectors)
                 return {
                     "status": "success",
                     "trashed_count": 0,
                     "total_checked": 0,
-                    "message": "No unread emails to process"
+                    "message": "No emails to process"
                 }
             
-            # Limit to max_emails
-            emails_to_check = all_unread[:max_emails]
+            # Limit to max_emails total
+            emails_to_check = all_emails[:max_emails]
             
-            # Use AI spam detector (same as your cleanup_spam.py)
-            logger.info(f"Running AI spam detection on {len(emails_to_check)} emails...")
+            # AI Detection
+            logger.info(f"🤖 Running AI spam detection on {len(emails_to_check)} emails...")
             detector = SpamDetector()
             categorized = detector.batch_categorize(emails_to_check)
             
-            # Filter spam emails
+            # Filter spam
             spam_emails = [e for e in categorized if e.get("category") == "spam"]
             
-            logger.info(f"AI detected {len(spam_emails)} spam emails out of {len(emails_to_check)}")
+            logger.info(f"🎯 AI detected {len(spam_emails)} spam emails out of {len(emails_to_check)}")
             
             if not spam_emails:
+                self._cleanup_connectors(connectors)
                 return {
                     "status": "success",
                     "trashed_count": 0,
                     "total_checked": len(emails_to_check),
-                    "message": "No spam detected in this batch!"
+                    "message": f"✅ No spam detected in {len(emails_to_check)} emails checked!"
                 }
             
-            # Move spam to trash (soft delete like your Yahoo script does)
+            # Delete spam
             trashed_count = 0
             failed_count = 0
             
+            # Group spam by account
+            spam_by_account = {}
             for email in spam_emails:
+                acc_id = email.get("account_id")
+                if acc_id not in spam_by_account:
+                    spam_by_account[acc_id] = []
+                spam_by_account[acc_id].append(email)
+            
+            # Delete per account
+            for acc_id, spam_list in spam_by_account.items():
                 try:
-                    account_id = email.get("account_id")
-                    email_id = email.get("id")
+                    connector = connectors.get(acc_id)
+                    if not connector:
+                        logger.error(f"No connector for {acc_id}")
+                        failed_count += len(spam_list)
+                        continue
                     
-                    # Get Gmail connector
-                    gmail = GmailConnector(account_id)
+                    spam_ids = [e['id'] for e in spam_list]
                     
-                    # Trash the email (moves to Trash, NOT permanent)
-                    gmail.service.users().messages().trash(
-                        userId='me',
-                        id=email_id
-                    ).execute()
+                    logger.info(f"🗑️  Deleting {len(spam_ids)} spam emails from {acc_id}...")
                     
-                    trashed_count += 1
-                    logger.info(f"Trashed: {email.get('subject')} from {email.get('from')}")
+                    # Universal delete method
+                    result = connector.delete_emails(spam_ids, permanent=False)
+                    
+                    if result.get('success'):
+                        deleted = result.get('deleted_count', 0)
+                        failed = result.get('failed_count', 0)
+                        trashed_count += deleted
+                        failed_count += failed
+                        logger.info(f"✅ Deleted {deleted} emails from {acc_id}")
+                        if failed > 0:
+                            logger.warning(f"⚠️  {failed} emails failed to delete from {acc_id}")
+                    else:
+                        failed_count += len(spam_ids)
+                        logger.error(f"❌ Delete failed for {acc_id}: {result.get('error')}")
                     
                 except Exception as e:
-                    failed_count += 1
-                    logger.error(f"Failed to trash email {email_id}: {e}")
+                    logger.error(f"Error deleting from {acc_id}: {e}", exc_info=True)
+                    failed_count += len(spam_list)
+            
+            # Cleanup
+            self._cleanup_connectors(connectors)
             
             return {
                 "status": "success",
@@ -706,15 +766,102 @@ Write a clear, professional email. Include appropriate greeting and closing."""
                 "spam_found": len(spam_emails),
                 "spam_details": [
                     {
-                        "from": e.get("from"),
-                        "subject": e.get("subject"),
-                        "reasoning": e.get("reasoning")
+                        "from": e.get("from", "Unknown"),
+                        "subject": e.get("subject", "No subject"),
+                        "reasoning": e.get("reasoning", "")[:100]
                     }
                     for e in spam_emails[:5]
                 ],
-                "message": f"AI detected {len(spam_emails)} spam emails. Moved {trashed_count} to Trash for review. {failed_count} failed."
+                "message": f"🎯 AI detected {len(spam_emails)} spam emails. ✅ Moved {trashed_count} to Trash. {'⚠️ ' + str(failed_count) + ' failed.' if failed_count > 0 else ''}"
             }
             
         except Exception as e:
-            logger.error(f"Cleanup spam safe failed: {e}")
+            logger.error(f"Cleanup spam safe failed: {e}", exc_info=True)
             return {"status": "error", "message": str(e)}
+
+    def _get_connector(self, account_id):
+        """
+        Universal connector factory - returns the right connector for any provider
+        """
+        from server.connectors.yahoo_connector import YahooConnector
+        from server.connectors.gmail_connector import GmailConnector
+        from server.connectors.hotmail_connector import HotmailConnector
+        from server.connectors.comcast_connector import ComcastConnector
+        from server.connectors.apple_connector import AppleConnector
+        from server.connectors.imap_connector import IMAPConnector
+        from server.credential_vault import CredentialVault
+        import logging
+        
+        logger = logging.getLogger("email_manager")
+        
+        try:
+            # Get account config
+            account_config = None
+            for acc in self.config.get("accounts", []):
+                if acc["id"] == account_id:
+                    account_config = acc
+                    break
+            
+            if not account_config:
+                logger.error(f"No config found for account: {account_id}")
+                return None
+            
+            provider = account_config.get("provider", "").lower()
+            
+            # Get credentials
+            vault = CredentialVault()
+            creds = vault.get_credentials(account_id)
+            
+            if not creds:
+                logger.error(f"No credentials found for account: {account_id}")
+                return None
+            
+            # Return appropriate connector
+            if provider == "yahoo":
+                return YahooConnector(creds["email"], creds["app_password"])
+            
+            elif provider == "gmail":
+                return GmailConnector(account_id)
+            
+            elif provider in ["hotmail", "outlook", "live", "microsoft"]:
+                return HotmailConnector(creds["email"], creds["app_password"])
+            
+            elif provider == "comcast":
+                return ComcastConnector(creds["email"], creds["app_password"])
+            
+            elif provider in ["apple", "icloud", "me", "mac"]:
+                return AppleConnector(creds["email"], creds["app_password"])
+            
+            elif provider == "imap":
+                return IMAPConnector(
+                    email=creds["email"],
+                    password=creds["password"],
+                    imap_server=account_config.get("imap_server"),
+                    imap_port=account_config.get("imap_port", 993)
+                )
+            
+            else:
+                logger.warning(f"Unknown provider '{provider}' for {account_id}, defaulting to IMAP")
+                return IMAPConnector(
+                    email=creds.get("email"),
+                    password=creds.get("password"),
+                    imap_server=account_config.get("imap_server"),
+                    imap_port=account_config.get("imap_port", 993)
+                )
+        
+        except Exception as e:
+            logger.error(f"Error getting connector for {account_id}: {e}", exc_info=True)
+            return None
+
+    def _cleanup_connectors(self, connectors):
+        """Disconnect all connectors cleanly"""
+        import logging
+        logger = logging.getLogger("email_manager")
+        
+        for acc_id, conn in connectors.items():
+            try:
+                if hasattr(conn, 'disconnect'):
+                    conn.disconnect()
+                    logger.info(f"Disconnected from {acc_id}")
+            except Exception as e:
+                logger.error(f"Error disconnecting from {acc_id}: {e}")
