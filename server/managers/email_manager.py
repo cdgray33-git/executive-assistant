@@ -788,12 +788,11 @@ Write a clear, professional email. Include appropriate greeting and closing."""
         from server.connectors.hotmail_connector import HotmailConnector
         from server.connectors.comcast_connector import ComcastConnector
         from server.connectors.apple_connector import AppleConnector
-        from server.connectors.imap_connector import IMAPConnector
         from server.credential_vault import CredentialVault
         import logging
-        
+
         logger = logging.getLogger("email_manager")
-        
+
         try:
             # Get account config
             account_config = None
@@ -801,54 +800,41 @@ Write a clear, professional email. Include appropriate greeting and closing."""
                 if acc["id"] == account_id:
                     account_config = acc
                     break
-            
+
             if not account_config:
                 logger.error(f"No config found for account: {account_id}")
                 return None
-            
+
             provider = account_config.get("provider", "").lower()
-            
+
             # Get credentials
             vault = CredentialVault()
             creds = vault.get_credentials(account_id)
-            
+
             if not creds:
                 logger.error(f"No credentials found for account: {account_id}")
                 return None
-            
+
             # Return appropriate connector
             if provider == "yahoo":
                 return YahooConnector(creds["email"], creds["app_password"])
-            
+
             elif provider == "gmail":
                 return GmailConnector(account_id)
-            
+
             elif provider in ["hotmail", "outlook", "live", "microsoft"]:
                 return HotmailConnector(creds["email"], creds["app_password"])
-            
+
             elif provider == "comcast":
                 return ComcastConnector(creds["email"], creds["app_password"])
-            
+
             elif provider in ["apple", "icloud", "me", "mac"]:
                 return AppleConnector(creds["email"], creds["app_password"])
-            
-            elif provider == "imap":
-                return IMAPConnector(
-                    email=creds["email"],
-                    password=creds["password"],
-                    imap_server=account_config.get("imap_server"),
-                    imap_port=account_config.get("imap_port", 993)
-                )
-            
+
             else:
-                logger.warning(f"Unknown provider '{provider}' for {account_id}, defaulting to IMAP")
-                return IMAPConnector(
-                    email=creds.get("email"),
-                    password=creds.get("password"),
-                    imap_server=account_config.get("imap_server"),
-                    imap_port=account_config.get("imap_port", 993)
-                )
-        
+                logger.warning(f"Unknown provider '{provider}' for {account_id}")
+                return None
+
         except Exception as e:
             logger.error(f"Error getting connector for {account_id}: {e}", exc_info=True)
             return None
