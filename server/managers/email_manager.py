@@ -788,7 +788,7 @@ Write a clear, professional email. Include appropriate greeting and closing."""
         from server.connectors.hotmail_connector import HotmailConnector
         from server.connectors.comcast_connector import ComcastConnector
         from server.connectors.apple_connector import AppleConnector
-        from server.credential_vault import CredentialVault
+        from server.security.credential_vault import CredentialVault
         import logging
 
         logger = logging.getLogger("email_manager")
