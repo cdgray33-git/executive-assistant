@@ -162,3 +162,67 @@ class YahooConnector:
         
         return result
     
+
+    def delete_emails(self, email_ids: List[str], permanent: bool = False) -> Dict:
+        """
+        Delete emails by ID
+        permanent=False: Move to Trash folder (reversible)
+        permanent=True: Flag as deleted and expunge (permanent)
+        """
+        if not self.imap:
+            return {"success": False, "error": "Not connected"}
+
+        try:
+            success_count = 0
+            failed_ids = []
+
+            if permanent:
+                # Permanent delete: flag and expunge
+                self.imap.select("INBOX")
+                for email_id in email_ids:
+                    try:
+                        status, _ = self.imap.store(email_id.encode(), '+FLAGS', '\\Deleted')
+                        if status == "OK":
+                            success_count += 1
+                        else:
+                            failed_ids.append(email_id)
+                    except Exception as e:
+                        logger.error(f"Failed to delete {email_id}: {e}")
+                        failed_ids.append(email_id)
+                
+                if success_count > 0:
+                    self.imap.expunge()
+            
+            else:
+                # Soft delete: COPY to Trash, then delete from INBOX
+                self.imap.select("INBOX")
+                
+                for email_id in email_ids:
+                    try:
+                        # Copy to Trash folder
+                        status, _ = self.imap.copy(email_id.encode(), 'Trash')
+                        
+                        if status == "OK":
+                            # Now delete from INBOX
+                            self.imap.store(email_id.encode(), '+FLAGS', '\\Deleted')
+                            success_count += 1
+                        else:
+                            failed_ids.append(email_id)
+                    except Exception as e:
+                        logger.error(f"Failed to move {email_id} to trash: {e}")
+                        failed_ids.append(email_id)
+                
+                # Expunge to remove from INBOX (but they're in Trash now)
+                if success_count > 0:
+                    self.imap.expunge()
+
+            return {
+                "success": True,
+                "deleted_count": success_count,
+                "failed_count": len(failed_ids),
+                "failed_ids": failed_ids
+            }
+
+        except Exception as e:
+            logger.error(f"Delete operation failed: {e}")
+            return {"success": False, "error": str(e)}
