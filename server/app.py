@@ -8,6 +8,8 @@ import json
 from pathlib import Path
 from typing import Optional, Any, Dict, List
 
+from managers.conversation_memory import ConversationMemory
+import uuid
 from fastapi import FastAPI, Request, Header, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -352,31 +354,25 @@ class ChatRequest(BaseModel):
 
 @app.post("/api/chat", dependencies=[Depends(verify_key)])
 async def chat_with_agent(request: ChatRequest):
-    """
-    Chat with JARVIS - the conversational AI assistant
-    Supports function calling and multi-turn conversations
-    """
+    """Chat with JARVIS - WITH CONVERSATION MEMORY"""
     try:
+        user_config = get_config()
+        user_id = user_config.get("user_name", "default_user")
+        session_id = str(uuid.uuid4())
+        
         if request.reset:
             agent.reset_conversation()
-            return {
-                "status": "success",
-                "message": "Conversation reset. How can I help you?"
-            }
+            conversation_memory.store_conversation(user_id, session_id, "system", "Conversation reset")
+            return {"status": "success", "message": "Conversation reset. How can I help you?", "session_id": session_id}
         
-        # Process message through agent
+        conversation_memory.store_conversation(user_id, session_id, "user", request.message)
         result = await agent.chat(request.message)
+        conversation_memory.store_conversation(user_id, session_id, "assistant", result.get("response", ""), function_calls=result.get("function_calls"))
         
-        return {
-            "status": "success",
-            **result
-        }
-        
+        return {"status": "success", "session_id": session_id, **result}
     except Exception as e:
         logger.error(f"Chat error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/chat/history", dependencies=[Depends(verify_key)])
 async def get_chat_history():
     """Get conversation history"""
     return {
