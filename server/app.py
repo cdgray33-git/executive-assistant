@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 from typing import Optional, Any, Dict, List
 
-from managers.conversation_memory import ConversationMemory
+from server.managers.conversation_memory import ConversationMemory
 import uuid
 from fastapi import FastAPI, Request, Header, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
