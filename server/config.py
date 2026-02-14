@@ -17,7 +17,7 @@ DEFAULT_CONFIG = {
     "ea_name": "JARVIS",
     "user_name": "User",
     "banner_text": "JARVIS, Your Executive Assistant",
-    "model": "llama3.2:latest",
+    "model": "qwen2.5:7b-instruct",
     "auto_cleanup": {
         "enabled": False,
         "interval_minutes": 180,  # 3 hours default

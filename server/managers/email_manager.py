@@ -617,13 +617,22 @@ Write a clear, professional email. Include appropriate greeting and closing."""
             "total_folders_created": total_created,
             "results": results
         }
-    def cleanup_spam_safe(self, account_id=None, max_emails=50, **kwargs):
-        max_emails = int(max_emails)  # Ensure integer
-        """Universal spam cleanup using AccountManager"""
+    def cleanup_spam_safe(self, account_id=None, max_emails=50, auto_categorize=False, **kwargs):
+        """
+        Universal spam cleanup with 3-category results and optional auto-categorization.
+        
+        Args:
+            account_id: Email account to process (fuzzy matched)
+            max_emails: Max emails to check
+            auto_categorize: If True, categorize "keep" emails into 18 folders
+        
+        Returns all 3 categories: spam, keep, unsure
+        """
         from server.spam_detector import SpamDetector
         import logging
         
         logger = logging.getLogger("email_manager")
+        max_emails = int(max_emails)  # Ensure integer
         
         try:
             # Get matching accounts
@@ -636,7 +645,6 @@ Write a clear, professional email. Include appropriate greeting and closing."""
                         "message": f"No accounts found matching '{account_id}'. Available: {', '.join(available)}"
                     }
             else:
-                # All accounts
                 account_matches = []
                 for acc_id in self.account_mgr.vault.list_accounts().keys():
                     try:
@@ -679,67 +687,124 @@ Write a clear, professional email. Include appropriate greeting and closing."""
             
             if not all_emails:
                 self._cleanup_connectors(connectors)
-                return {"status": "success", "trashed_count": 0, "total_checked": 0, "message": "No emails"}
+                return {"status": "success", "total_checked": 0, "message": "No emails to process"}
             
             emails_to_check = all_emails[:max_emails]
             
-            logger.info(f"🤖 AI spam detection on {len(emails_to_check)} emails...")
+            # AI Detection - returns spam/keep/unsure
+            logger.info(f"🤖 AI detection on {len(emails_to_check)} emails...")
             detector = SpamDetector()
             categorized = detector.batch_categorize(emails_to_check)
             
+            # Separate into 3 categories
             spam_emails = [e for e in categorized if e.get("category") == "spam"]
-            logger.info(f"🎯 Found {len(spam_emails)} spam")
+            keep_emails = [e for e in categorized if e.get("category") == "keep"]
+            unsure_emails = [e for e in categorized if e.get("category") == "unsure"]
             
-            if not spam_emails:
-                self._cleanup_connectors(connectors)
-                return {"status": "success", "trashed_count": 0, "total_checked": len(emails_to_check), "message": f"✅ No spam in {len(emails_to_check)} emails"}
+            logger.info(f"🎯 Results: {len(spam_emails)} spam, {len(keep_emails)} keep, {len(unsure_emails)} unsure")
             
+            # Delete spam
             trashed_count = 0
             failed_count = 0
             
-            spam_by_account = {}
-            for email in spam_emails:
-                acc_id = email.get("account_id")
-                if acc_id not in spam_by_account:
-                    spam_by_account[acc_id] = []
-                spam_by_account[acc_id].append(email)
-            
-            for acc_id, spam_list in spam_by_account.items():
-                try:
-                    connector = connectors.get(acc_id)
-                    if not connector:
+            if spam_emails:
+                spam_by_account = {}
+                for email in spam_emails:
+                    acc_id = email.get("account_id")
+                    if acc_id not in spam_by_account:
+                        spam_by_account[acc_id] = []
+                    spam_by_account[acc_id].append(email)
+                
+                for acc_id, spam_list in spam_by_account.items():
+                    try:
+                        connector = connectors.get(acc_id)
+                        if not connector:
+                            failed_count += len(spam_list)
+                            continue
+                        
+                        spam_ids = [e['id'] for e in spam_list]
+                        logger.info(f"🗑️  Deleting {len(spam_ids)} spam from {acc_id}...")
+                        
+                        result = connector.delete_emails(spam_ids, permanent=False)
+                        
+                        if result.get('success'):
+                            deleted = result.get('deleted_count', 0)
+                            failed = result.get('failed_count', 0)
+                            trashed_count += deleted
+                            failed_count += failed
+                            logger.info(f"✅ Deleted {deleted} from {acc_id}")
+                        else:
+                            failed_count += len(spam_ids)
+                            logger.error(f"❌ Delete failed {acc_id}: {result.get('error')}")
+                        
+                    except Exception as e:
+                        logger.error(f"Error deleting {acc_id}: {e}", exc_info=True)
                         failed_count += len(spam_list)
-                        continue
-                    
-                    spam_ids = [e['id'] for e in spam_list]
-                    logger.info(f"🗑️  Deleting {len(spam_ids)} from {acc_id}...")
-                    
-                    result = connector.delete_emails(spam_ids, permanent=False)
-                    
-                    if result.get('success'):
-                        deleted = result.get('deleted_count', 0)
-                        failed = result.get('failed_count', 0)
-                        trashed_count += deleted
-                        failed_count += failed
-                        logger.info(f"✅ Deleted {deleted} from {acc_id}")
-                    else:
-                        failed_count += len(spam_ids)
-                        logger.error(f"❌ Delete failed {acc_id}: {result.get('error')}")
-                    
-                except Exception as e:
-                    logger.error(f"Error deleting {acc_id}: {e}", exc_info=True)
-                    failed_count += len(spam_list)
+            
+            # Auto-categorize "keep" emails if requested
+            categorized_count = 0
+            if auto_categorize and keep_emails:
+                logger.info(f"📁 Auto-categorizing {len(keep_emails)} keep emails...")
+                for email in keep_emails:
+                    try:
+                        category = self._categorize_email(email)
+                        email["auto_category"] = category
+                        categorized_count += 1
+                    except Exception as e:
+                        logger.error(f"Failed to categorize email: {e}")
+                        email["auto_category"] = "Inbox"
             
             self._cleanup_connectors(connectors)
             
+            # Build response with all 3 categories
             return {
                 "status": "success",
+                "total_checked": len(emails_to_check),
+                
+                # Counts
+                "spam_found": len(spam_emails),
+                "keep_found": len(keep_emails),
+                "unsure_found": len(unsure_emails),
                 "trashed_count": trashed_count,
                 "failed_count": failed_count,
-                "total_checked": len(emails_to_check),
-                "spam_found": len(spam_emails),
-                "spam_details": [{"from": e.get("from", "Unknown"), "subject": e.get("subject", "No subject"), "reasoning": e.get("reasoning", "")[:100]} for e in spam_emails[:5]],
-                "message": f"🎯 {len(spam_emails)} spam. ✅ {trashed_count} trashed. {'⚠️ ' + str(failed_count) + ' failed' if failed_count > 0 else ''}"
+                "categorized_count": categorized_count if auto_categorize else 0,
+                
+                # Details for each category
+                "spam_details": [
+                    {
+                        "from": e.get("from", "Unknown"),
+                        "subject": e.get("subject", "No subject"),
+                        "reasoning": e.get("reasoning", "")[:100]
+                    }
+                    for e in spam_emails
+                ],
+                
+                "keep_details": [
+                    {
+                        "from": e.get("from", "Unknown"),
+                        "subject": e.get("subject", "No subject"),
+                        "category": e.get("auto_category", "Not categorized")
+                    }
+                    for e in keep_emails
+                ],
+                
+                "unsure_details": [
+                    {
+                        "from": e.get("from", "Unknown"),
+                        "subject": e.get("subject", "No subject"),
+                        "reasoning": e.get("reasoning", "Uncertain classification")
+                    }
+                    for e in unsure_emails
+                ],
+                
+                # Summary message
+                "message": (
+                    f"📊 Processed {len(emails_to_check)} emails: "
+                    f"🗑️ {len(spam_emails)} spam (trashed), "
+                    f"✅ {len(keep_emails)} keep"
+                    f"{f' (categorized into folders)' if auto_categorize and categorized_count > 0 else ''}, "
+                    f"⚠️ {len(unsure_emails)} unsure (left in inbox)"
+                )
             }
             
         except Exception as e:

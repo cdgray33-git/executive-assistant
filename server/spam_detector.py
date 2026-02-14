@@ -11,7 +11,7 @@ logger = logging.getLogger("spam_detector")
 class SpamDetector:
     """Uses Ollama to intelligently categorize emails"""
     
-    def __init__(self, model_name: str = "llama3.2:latest"):
+    def __init__(self, model_name: str = "qwen2.5:7b-instruct"):
         self.ollama = OllamaAdapter()
         self.model = model_name
     
