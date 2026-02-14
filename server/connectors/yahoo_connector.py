@@ -226,3 +226,63 @@ class YahooConnector:
         except Exception as e:
             logger.error(f"Delete operation failed: {e}")
             return {"success": False, "error": str(e)}
+
+    def send_message(
+        self, 
+        to: str, 
+        subject: str, 
+        body: str,
+        cc: Optional[List[str]] = None,
+        bcc: Optional[List[str]] = None
+    ) -> Dict:
+        """Send an email via SMTP"""
+        import smtplib
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+        
+        if not self.imap:
+            return {"success": False, "error": "Not connected"}
+        
+        try:
+            # Create message
+            msg = MIMEMultipart()
+            msg['From'] = self.email
+            msg['To'] = to
+            msg['Subject'] = subject
+            
+            if cc:
+                msg['Cc'] = ', '.join(cc)
+            if bcc:
+                msg['Bcc'] = ', '.join(bcc)
+            
+            msg.attach(MIMEText(body, 'plain'))
+            
+            # Yahoo SMTP settings
+            smtp_server = "smtp.mail.yahoo.com"
+            smtp_port = 587
+            
+            # Send via SMTP
+            with smtplib.SMTP(smtp_server, smtp_port) as server:
+                server.starttls()
+                server.login(self.email, self.app_password)
+                
+                recipients = [to]
+                if cc:
+                    recipients.extend(cc)
+                if bcc:
+                    recipients.extend(bcc)
+                
+                server.send_message(msg, self.email, recipients)
+            
+            logger.info(f"Email sent to {to}")
+            return {
+                "success": True,
+                "message": f"Email sent to {to}"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error sending email: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }

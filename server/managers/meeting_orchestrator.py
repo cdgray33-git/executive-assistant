@@ -102,100 +102,61 @@ Best regards"""
     
     def schedule_meeting(self, attendees: List[str], title: str, date: str, time: str,
                         duration: int = 60, description: Optional[str] = None, **kwargs) -> Dict[str, Any]:
-        """
-        Schedule a meeting with full workflow
-        
-        Workflow:
-        1. Resolve attendees to emails
-        2. Check calendar availability
-        3. Create calendar event
-        4. Draft invite emails
-        5. Send invites
-        6. Return summary
-        
-        Args:
-            attendees: List of attendee names or emails
-            title: Meeting title
-            date: Date (YYYY-MM-DD)
-            time: Time (HH:MM)
-            duration: Duration in minutes
-            description: Optional description
-            
-        Returns:
-            Meeting scheduling result
-        """
+        """Schedule a meeting with full workflow"""
         try:
             logger.info(f"Scheduling meeting: {title} with {len(attendees)} attendees")
             
             # Step 1: Resolve attendees
             attendee_result = self._resolve_attendees(attendees)
             if attendee_result["errors"]:
-                return {
-                    "status": "partial_error",
-                    "errors": attendee_result["errors"],
-                    "message": "Some attendees could not be resolved"
-                }
-            
+                return {"status": "partial_error", "errors": attendee_result["errors"], "message": "Some attendees could not be resolved"}
             resolved_attendees = attendee_result["resolved"]
             
             # Step 2: Check availability
             avail_result = self.calendar_mgr.check_availability(date, time, duration)
             if not avail_result.get("available"):
-                return {
-                    "status": "error",
-                    "error": "Time slot not available",
-                    "conflicts": avail_result.get("conflicts", [])
-                }
+                return {"status": "error", "error": "Time slot not available", "conflicts": avail_result.get("conflicts", [])}
             
             # Step 3: Create calendar event
-            event_result = self.calendar_mgr.add_event(
-                title=title,
-                date=date,
-                time=time,
-                duration=duration,
-                description=description or f"Meeting with {', '.join([a['name'] for a in resolved_attendees])}"
-            )
-            
+            event_result = self.calendar_mgr.add_event(title=title, date=date, time=time, duration=duration, description=description or f"Meeting with {', '.join([a['name'] for a in resolved_attendees])}")
             if event_result["status"] != "success":
                 return event_result
-            
             event = event_result["event"]
             
             # Step 4: Draft invite email
             invite_body = self._draft_meeting_invite(title, date, time, duration, resolved_attendees)
             
-            # Step 5: Send invites (TODO: Implement in Phase 3)
-            # For now, return draft
+            # Step 5: Send invites
             invites_sent = []
+            failed_invites = []
             for attendee in resolved_attendees:
-                # TODO: Actually send email
-                invites_sent.append({
-                    "to": attendee["email"],
-                    "subject": f"Meeting Invitation: {title}",
-                    "body": invite_body,
-                    "status": "draft"  # Will be "sent" when implemented
-                })
+                try:
+                    result = self.email_mgr.send_email(to=attendee["email"], subject=f"Meeting Invitation: {title}", body=invite_body)
+                    if result.get("status") == "success":
+                        invites_sent.append({"to": attendee["email"], "name": attendee["name"], "status": "sent"})
+                        logger.info(f"Sent meeting invite to {attendee['email']}")
+                    else:
+                        failed_invites.append({"to": attendee["email"], "error": result.get("error")})
+                except Exception as e:
+                    failed_invites.append({"to": attendee["email"], "error": str(e)})
             
-            logger.info(f"Meeting scheduled: {title} (Event ID: {event['id']})")
+            # Step 6: Store in database (optional)
+            try:
+                from server.database.connection import get_db_session
+                from sqlalchemy import text
+                import json
+                with get_db_session() as db:
+                    db.execute(text("INSERT INTO meetings (event_id, user_id, title, date, time, duration, description, attendees, status) VALUES (:eid, :uid, :t, :d, :tm, :dur, :desc, :att, :st)"), 
+                              {"eid": event["id"], "uid": "default_user", "t": title, "d": date, "tm": time, "dur": duration, "desc": description or "", "att": json.dumps(resolved_attendees), "st": "scheduled"})
+                logger.info(f"Meeting stored in database")
+            except:
+                pass
             
-            return {
-                "status": "success",
-                "meeting": {
-                    "event_id": event["id"],
-                    "title": title,
-                    "date": date,
-                    "time": time,
-                    "duration": duration,
-                    "attendees": resolved_attendees
-                },
-                "invites": invites_sent,
-                "message": f"Meeting scheduled with {len(resolved_attendees)} attendees"
-            }
-            
+            return {"status": "success", "meeting": {"event_id": event["id"], "title": title, "date": date, "time": time, "duration": duration, "attendees": resolved_attendees}, "invites_sent": invites_sent, "failed_invites": failed_invites, "message": f"Meeting scheduled. Sent {len(invites_sent)}/{len(resolved_attendees)} invites"}
         except Exception as e:
             logger.error(f"Error scheduling meeting: {e}")
             return {"status": "error", "error": str(e)}
-    
+
     def reschedule_meeting(self, meeting_id: str, new_date: str, new_time: str, **kwargs) -> Dict[str, Any]:
         """
         Reschedule an existing meeting
