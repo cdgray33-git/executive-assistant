@@ -618,6 +618,7 @@ Write a clear, professional email. Include appropriate greeting and closing."""
             "results": results
         }
     def cleanup_spam_safe(self, account_id=None, max_emails=50, **kwargs):
+        max_emails = int(max_emails)  # Ensure integer
         """Universal spam cleanup using AccountManager"""
         from server.spam_detector import SpamDetector
         import logging
