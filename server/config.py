@@ -20,7 +20,7 @@ DEFAULT_CONFIG = {
     "model": "qwen2.5:7b-instruct",
     "auto_cleanup": {
         "enabled": False,
-        "interval_minutes": 180,  # 3 hours default
+        "interval_minutes": 3,  # 3 minutes default
         "max_emails_per_run": 50
     },
     "ui_preferences": {
