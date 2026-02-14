@@ -362,12 +362,12 @@ async def chat_with_agent(request: ChatRequest):
         
         if request.reset:
             agent.reset_conversation()
-            conversation_memory.store_conversation(user_id, session_id, "system", "Conversation reset")
+            if conversation_memory: conversation_memory.store_conversation(user_id, session_id, "system", "Conversation reset")
             return {"status": "success", "message": "Conversation reset. How can I help you?", "session_id": session_id}
         
-        conversation_memory.store_conversation(user_id, session_id, "user", request.message)
+        if conversation_memory: conversation_memory.store_conversation(user_id, session_id, "user", request.message)
         result = await agent.chat(request.message)
-        conversation_memory.store_conversation(user_id, session_id, "assistant", result.get("response", ""), function_calls=result.get("function_calls"))
+        if conversation_memory: conversation_memory.store_conversation(user_id, session_id, "assistant", result.get("response", ""), function_calls=result.get("function_calls"))
         
         return {"status": "success", "session_id": session_id, **result}
     except Exception as e:
