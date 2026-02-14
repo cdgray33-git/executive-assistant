@@ -661,9 +661,9 @@ Write a clear, professional email. Include appropriate greeting and closing."""
                     logger.info(f"✅ Connected to {acc_id}")
                     
                     try:
-                        emails = connector.preview_emails(count=max_emails, oldest_first=True)
+                        emails = connector.preview_emails(count=int(max_emails), oldest_first=True)
                     except TypeError:
-                        emails = connector.preview_emails(count=max_emails, folder="INBOX")
+                        emails = connector.preview_emails(count=int(max_emails), folder="INBOX")
                     
                     logger.info(f"Retrieved {len(emails)} from {acc_id}")
                     
