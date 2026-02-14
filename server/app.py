@@ -8,8 +8,8 @@ import json
 from pathlib import Path
 from typing import Optional, Any, Dict, List
 
-from server.managers.conversation_memory import ConversationMemory
 import uuid
+
 from fastapi import FastAPI, Request, Header, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -23,6 +23,17 @@ from server.agent import ExecutiveAgent
 
 # Initialize agent
 agent = ExecutiveAgent()
+
+# Conversation Memory (optional - requires PostgreSQL)
+try:
+    from server.managers.conversation_memory import ConversationMemory
+    conversation_memory = ConversationMemory()
+    HAS_MEMORY = True
+    logger.info("✅ Conversation memory enabled")
+except Exception as e:
+    logger.warning(f"⚠️  Conversation memory disabled: {e}")
+    conversation_memory = None
+    HAS_MEMORY = False
 
 
 # Phase 2: Assistant functions
