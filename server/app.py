@@ -29,9 +29,9 @@ try:
     from server.managers.conversation_memory import ConversationMemory
     conversation_memory = ConversationMemory()
     HAS_MEMORY = True
-    logger.info("✅ Conversation memory enabled")
+    print("✅ Conversation memory enabled")
 except Exception as e:
-    logger.warning(f"⚠️  Conversation memory disabled: {e}")
+    print(f"⚠️  Conversation memory disabled: {e}")
     conversation_memory = None
     HAS_MEMORY = False
 
