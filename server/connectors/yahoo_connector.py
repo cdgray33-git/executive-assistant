@@ -264,7 +264,7 @@ class YahooConnector:
             # Send via SMTP
             with smtplib.SMTP(smtp_server, smtp_port) as server:
                 server.starttls()
-                server.login(self.email, self.app_password)
+                server.login(self.email, self.password)
                 
                 recipients = [to]
                 if cc:
