@@ -163,6 +163,53 @@ PLISTEOF
 
 echo "✅ Desktop launcher created at: $APP_DIR"
 
+# Create Stop Server icon
+STOP_APP_NAME="Stop Executive Assistant"
+STOP_APP_DIR="$HOME/Desktop/$STOP_APP_NAME.app"
+
+mkdir -p "$STOP_APP_DIR/Contents/MacOS"
+mkdir -p "$STOP_APP_DIR/Contents/Resources"
+
+cat > "$STOP_APP_DIR/Contents/MacOS/launcher" << 'STOPEOF'
+#!/bin/bash
+
+osascript -e 'display notification "Stopping Executive Assistant..." with title "Executive Assistant"'
+
+# Stop server
+pkill -f "uvicorn.*server.app:app"
+sleep 1
+
+# Stop Ollama (optional)
+pkill -f ollama
+
+osascript -e 'display notification "Server stopped successfully" with title "Executive Assistant"'
+STOPEOF
+
+chmod +x "$STOP_APP_DIR/Contents/MacOS/launcher"
+
+cat > "$STOP_APP_DIR/Contents/Info.plist" << 'STOPPLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>launcher</string>
+    <key>CFBundleName</key>
+    <string>Stop Executive Assistant</string>
+    <key>CFBundleDisplayName</key>
+    <string>Stop Executive Assistant</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.executiveassistant.stop</string>
+    <key>CFBundleVersion</key>
+    <string>1.0</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+</dict>
+</plist>
+STOPPLIST
+
+echo "✅ Stop icon created at: $STOP_APP_DIR"
+
 echo "╔════════════════════════════════════════════════════════════╗"
 echo "║              ✅ INSTALLATION COMPLETE! ✅                  ║"
 echo "╚════════════════════════════════════════════════════════════╝"
