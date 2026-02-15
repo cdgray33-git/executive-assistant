@@ -446,7 +446,7 @@ function App() {
       </nav>
 
       <main className="max-w-7xl mx-auto px-6 py-8">
-        {activeTab === 'chat' && (
+        <div style={{ display: activeTab === 'chat' ? 'block' : 'none' }}>
           <div>
             <ChatInterface />
             
@@ -481,7 +481,7 @@ function App() {
               )}
             </div>
           </div>
-        )}
+        </div>
 
         {activeTab === 'email' && (
           <div className="bg-white rounded-xl p-8 shadow-sm border border-gray-100 text-center">
