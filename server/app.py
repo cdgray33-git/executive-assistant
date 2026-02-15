@@ -467,15 +467,39 @@ async def assistant_command(request: AssistantCommandRequest):
     Examples: "clean my spam", "check email", "edit this presentation"
     """
     try:
+        # Get user config and generate session ID
+        user_config = get_config()
+        user_id = user_config.get("user_name", "default_user")
+        session_id = str(uuid.uuid4())
+
+        # Handle reset
+        if hasattr(request, 'reset') and request.reset:
+            agent.reset_conversation()
+            if conversation_memory:
+                conversation_memory.store_conversation(user_id, session_id, "system", "Conversation reset")
+            return {"status": "success", "message": "Conversation reset", "session_id": session_id}
+
+        # Store user message
+        if conversation_memory:
+            conversation_memory.store_conversation(user_id, session_id, "user", request.command)
+
+        # Process request
         if request.attachment:
-            # Process with attachment
             result = await agent.chat_with_attachment(request.command, request.attachment)
         else:
-            # Regular chat
             result = await agent.chat(request.command)
-        
+
+        # Store assistant response
+        if conversation_memory:
+            conversation_memory.store_conversation(
+                user_id, session_id, "assistant",
+                result.get("response", ""),
+                function_calls=result.get("function_calls")
+            )
+
         return {
             "status": "success",
+            "session_id": session_id,
             **result
         }
     except Exception as e:
