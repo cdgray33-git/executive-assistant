@@ -26,11 +26,42 @@ fi
 echo "✅ Homebrew installed"
 
 echo ""
-echo "📦 Step 2/5: Installing Python 3.13 and Ollama..."
-brew install python@3.13 ollama git 2>/dev/null || true
+echo "📦 Step 2/8: Installing Python 3.13 and Ollama..."
+brew install python@3.13 ollama git postgresql@17 2>/dev/null || true
 
 echo ""
-echo "📦 Step 3/5: Creating Python virtual environment..."
+
+echo ""
+echo "🗄️  Step 3/8: Setting up PostgreSQL + pgvector..."
+# Start PostgreSQL service
+brew services start postgresql@17
+sleep 3
+
+# Install pgvector extension
+if [ ! -d "/tmp/pgvector" ]; then
+    echo "   Downloading pgvector..."
+    git clone --branch v0.7.0 https://github.com/pgvector/pgvector.git /tmp/pgvector
+fi
+
+cd /tmp/pgvector
+export PATH="/opt/homebrew/opt/postgresql@17/bin:$PATH"
+make clean 2>/dev/null || true
+make
+make install
+cd ~/executive-assistant
+
+# Create database and user
+echo "   Creating database..."
+psql postgres -c "CREATE USER jarvis WITH PASSWORD 'jarvis_secure_2026';" 2>/dev/null || echo "   User already exists"
+psql postgres -c "CREATE DATABASE jarvis_ea OWNER jarvis;" 2>/dev/null || echo "   Database already exists"
+psql jarvis_ea -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+# Deploy schema
+echo "   Deploying schema..."
+psql -U jarvis -d jarvis_ea -f server/database/schema.sql
+
+echo "✅ PostgreSQL + pgvector configured"
+echo "📦 Step 4/8: Creating Python virtual environment..."
 /opt/homebrew/bin/python3.13 -m venv ~/.executive-assistant-env
 source ~/.executive-assistant-env/bin/activate
 pip install --upgrade pip
@@ -39,7 +70,7 @@ echo "✅ Python packages installed"
 
 echo ""
 echo ""
-echo "🎨 Step 4/6: Building React UI..."
+echo "🎨 Step 5/8: Building React UI..."
 if ! command -v node &> /dev/null; then
     echo "Installing Node.js..."
     brew install node
@@ -58,7 +89,7 @@ cp -r dist/* ../ui/dist/
 cd ..
 echo "✅ UI built and deployed"
 
-echo "🤖 Step 4/5: Starting Ollama and downloading AI model..."
+echo "🤖 Step 6/8: Starting Ollama and downloading AI model..."
 pkill ollama 2>/dev/null || true
 sleep 2
 ollama serve > /dev/null 2>&1 &
@@ -67,10 +98,71 @@ echo "   Downloading AI model (~4GB, may take 5-10 minutes)..."
 ollama pull qwen2.5:7b-instruct
 
 echo ""
-echo "📁 Step 5/5: Creating data directories..."
+echo "📁 Step 7/8: Creating data directories..."
 mkdir -p ~/Library/Application\ Support/ExecutiveAssistant/data/{calendar,contacts,notes,documents,templates,config,intelligence,logs}
 
 echo ""
+
+echo ""
+echo "🖥️  Step 8/8: Creating desktop launcher..."
+APP_NAME="Executive Assistant"
+APP_DIR="$HOME/Desktop/$APP_NAME.app"
+
+mkdir -p "$APP_DIR/Contents/MacOS"
+mkdir -p "$APP_DIR/Contents/Resources"
+
+# Create launcher script
+cat > "$APP_DIR/Contents/MacOS/launcher" << 'LAUNCHEOF'
+#!/bin/bash
+cd ~/executive-assistant
+source ~/.executive-assistant-env/bin/activate
+
+# Ensure PostgreSQL is running
+brew services start postgresql@17 2>/dev/null
+
+# Start Ollama
+if ! pgrep -x "ollama" > /dev/null; then
+    ollama serve > /dev/null 2>&1 &
+    sleep 3
+fi
+
+# Start server
+python -m uvicorn server.app:app --host 127.0.0.1 --port 8000 &
+sleep 3
+
+# Open browser
+open http://localhost:8000
+
+# Keep app running
+wait
+LAUNCHEOF
+
+chmod +x "$APP_DIR/Contents/MacOS/launcher"
+
+# Create Info.plist
+cat > "$APP_DIR/Contents/Info.plist" << 'PLISTEOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>launcher</string>
+    <key>CFBundleName</key>
+    <string>Executive Assistant</string>
+    <key>CFBundleDisplayName</key>
+    <string>Executive Assistant</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.executiveassistant</string>
+    <key>CFBundleVersion</key>
+    <string>1.0</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+</dict>
+</plist>
+PLISTEOF
+
+echo "✅ Desktop launcher created at: $APP_DIR"
+
 echo "╔════════════════════════════════════════════════════════════╗"
 echo "║              ✅ INSTALLATION COMPLETE! ✅                  ║"
 echo "╚════════════════════════════════════════════════════════════╝"
@@ -79,4 +171,11 @@ echo "To start:"
 echo "  ./start_server.sh"
 echo ""
 echo "Then open: http://localhost:8000"
+
+To start, either:
+   1. Double-click 'Executive Assistant' on Desktop
+   2. Run: ./start_server.sh
+
+🗄️  Database: jarvis_ea (PostgreSQL 17 + pgvector)
+🤖 AI Model: qwen2.5:7b-instruct
 echo ""
