@@ -172,10 +172,10 @@ echo "  ./start_server.sh"
 echo ""
 echo "Then open: http://localhost:8000"
 
-To start, either:
-   1. Double-click 'Executive Assistant' on Desktop
-   2. Run: ./start_server.sh
-
-🗄️  Database: jarvis_ea (PostgreSQL 17 + pgvector)
-🤖 AI Model: qwen2.5:7b-instruct
+echo "To start, either:"
+echo "   1. Double-click 'Executive Assistant' on Desktop"
+echo "   2. Run: ./start_server.sh"
+echo ""
+echo "🗄️  Database: jarvis_ea (PostgreSQL 17 + pgvector)"
+echo "🤖 AI Model: qwen2.5:7b-instruct"
 echo ""
