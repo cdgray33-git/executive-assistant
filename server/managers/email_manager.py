@@ -70,6 +70,13 @@ class EmailManager:
                 json.dump(self.sender_history, f, indent=2)
         except Exception as e:
             logger.error(f"Error saving sender history: {e}")
+
+    def get_primary_account(self) -> str:
+        """Get the primary email account for sending"""
+        accounts = self.account_mgr.list_accounts()
+        if accounts:
+            return accounts[0].get("account_id", "")
+        return ""
     
     def _categorize_email(self, email: Dict) -> str:
         """

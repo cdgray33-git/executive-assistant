@@ -127,18 +127,32 @@ Best regards"""
             invite_body = self._draft_meeting_invite(title, date, time, duration, resolved_attendees)
             
             # Step 5: Send invites
-            invites_sent = []
-            failed_invites = []
+            drafts_created = []
+            # Create email drafts instead of sending immediately
+            from server.draft_manager import draft_manager
+            
+            drafts_created = []
             for attendee in resolved_attendees:
                 try:
-                    result = self.email_mgr.send_email(to=attendee["email"], subject=f"Meeting Invitation: {title}", body=invite_body)
-                    if result.get("status") == "success":
-                        invites_sent.append({"to": attendee["email"], "name": attendee["name"], "status": "sent"})
-                        logger.info(f"Sent meeting invite to {attendee['email']}")
-                    else:
-                        failed_invites.append({"to": attendee["email"], "error": result.get("error")})
+                    draft_id = draft_manager.create_draft(
+                        to=attendee["email"],
+                        subject=f"Meeting Invitation: {title}",
+                        body=invite_body,
+                        from_account=self.email_mgr.get_primary_account(),
+                        context={
+                            "type": "meeting_invitation",
+                            "meeting_id": event_id,
+                            "attendee": attendee
+                        }
+                    )
+                    drafts_created.append({
+                        "to": attendee["email"],
+                        "name": attendee["name"],
+                        "draft_id": draft_id
+                    })
+                    logger.info(f"Created email draft for {attendee['email']}")
                 except Exception as e:
-                    failed_invites.append({"to": attendee["email"], "error": str(e)})
+                    logger.error(f"Failed to create draft for {attendee['email']}: {e}")
             
             # Step 6: Store in database (optional)
             try:
@@ -152,7 +166,7 @@ Best regards"""
             except:
                 pass
             
-            return {"status": "success", "meeting": {"event_id": event["id"], "title": title, "date": date, "time": time, "duration": duration, "attendees": resolved_attendees}, "invites_sent": invites_sent, "failed_invites": failed_invites, "message": f"Meeting scheduled. Sent {len(invites_sent)}/{len(resolved_attendees)} invites"}
+            return {"status": "success", "meeting": {"event_id": event["id"], "title": title, "date": date, "time": time, "duration": duration, "attendees": resolved_attendees}, "drafts_created": drafts_created, "message": f"Meeting scheduled. Created {len(drafts_created)}/{len(resolved_attendees)} invites"}
         except Exception as e:
             logger.error(f"Error scheduling meeting: {e}")
             return {"status": "error", "error": str(e)}

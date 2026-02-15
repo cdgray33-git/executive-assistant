@@ -1,52 +1,53 @@
 import { useState, useEffect, useRef } from 'react'
-import { Send, Trash2, Loader, Paperclip, X } from 'lucide-react'
+import { Send, Paperclip, X, Mail, Check, Edit2, Trash2 } from 'lucide-react'
 
 export default function ChatInterface() {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
+  const [attachment, setAttachment] = useState(null)
   const [loading, setLoading] = useState(false)
   const [config, setConfig] = useState({ ea_name: 'JARVIS', user_name: 'User' })
-  const [attachment, setAttachment] = useState(null)
+  const [pendingDrafts, setPendingDrafts] = useState([])
+  const [editingDraft, setEditingDraft] = useState(null)
   const messagesEndRef = useRef(null)
   const fileInputRef = useRef(null)
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }
-
   useEffect(() => {
-    scrollToBottom()
-  }, [messages])
-
-  useEffect(() => {
-    fetch('/api/config')
-      .then(r => r.json())
-      .then(data => {
-        if (data.config) setConfig(data.config)
-      })
-      .catch(() => {})
-
+    fetch('/api/config').then(r => r.json()).then(data => {
+      if (data.config) setConfig(data.config)
+    }).catch(() => {})
+    
     setMessages([{
       role: 'assistant',
-      content: `Good day. I'm ${config.ea_name || 'JARVIS'}, your executive assistant. How may I assist you today?`
+      content: `Hello ${config.user_name}, I'm ${config.ea_name}. How can I help you today?`
     }])
+    
+    loadPendingDrafts()
   }, [])
 
-  const handleFileSelect = (e) => {
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  const loadPendingDrafts = async () => {
+    try {
+      const res = await fetch('/api/drafts/pending')
+      const data = await res.json()
+      setPendingDrafts(data.drafts || [])
+    } catch (e) {
+      console.error('Failed to load drafts:', e)
+    }
+  }
+
+  const handleFileChange = (e) => {
     const file = e.target.files[0]
     if (file) {
-      if (file.size > 10 * 1024 * 1024) {
-        alert('File too large. Maximum size is 10MB.')
-        return
-      }
-      
       const reader = new FileReader()
-      reader.onload = (event) => {
+      reader.onload = () => {
         setAttachment({
           name: file.name,
           type: file.type,
-          size: file.size,
-          data: event.target.result.split(',')[1]
+          content: reader.result
         })
       }
       reader.readAsDataURL(file)
@@ -59,202 +60,304 @@ export default function ChatInterface() {
   }
 
   const sendMessage = async () => {
-    if ((!input.trim() && !attachment) || loading) return
+    if (!input.trim() && !attachment) return
 
     const userMessage = input.trim() || `[Attached: ${attachment.name}]`
-    setInput('')
-    
-    setMessages(prev => [...prev, { 
-      role: 'user', 
+
+    setMessages(prev => [...prev, {
+      role: 'user',
       content: userMessage,
-      attachment: attachment ? { name: attachment.name, size: attachment.size } : null
+      attachment: attachment
     }])
+
+    setInput('')
     setLoading(true)
 
     try {
       const payload = { command: userMessage }
-      if (attachment) payload.attachment = attachment
+      if (attachment) {
+        payload.attachment = attachment
+      }
 
       const response = await fetch('/api/assistant/command', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': localStorage.getItem('api_key') || 'dev-key-12345'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       })
 
       const data = await response.json()
 
-      if (data.status === 'success') {
-        setMessages(prev => [...prev, {
-          role: 'assistant',
-          content: data.response || data.result,
-          actions: data.actions_taken,
-          function_calls: data.tool_calls
-        }])
-      } else {
-        setMessages(prev => [...prev, {
-          role: 'assistant',
-          content: `⚠️ ${data.error || 'Unable to process request'}`
-        }])
-      }
-    } catch (error) {
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: `❌ Connection error: ${error.message}`
+        content: data.response || 'Done!',
+        drafts: data.drafts_created || []
+      }])
+
+      if (data.drafts_created && data.drafts_created.length > 0) {
+        loadPendingDrafts()
+      }
+
+      removeAttachment()
+    } catch (e) {
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `Sorry, I encountered an error: ${e.message}`
       }])
     } finally {
       setLoading(false)
-      removeAttachment()
     }
   }
 
-  const resetConversation = () => {
+  const approveDraft = async (draftId) => {
+    try {
+      const res = await fetch('/api/drafts/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ draft_id: draftId })
+      })
+      
+      const data = await res.json()
+      
+      if (data.status === 'success') {
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: '✅ Email sent successfully!'
+        }])
+        loadPendingDrafts()
+      }
+    } catch (e) {
+      alert(`Failed to send email: ${e.message}`)
+    }
+  }
+
+  const rejectDraft = async (draftId) => {
+    try {
+      await fetch('/api/drafts/reject', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ draft_id: draftId })
+      })
+      loadPendingDrafts()
+    } catch (e) {
+      alert(`Failed to delete draft: ${e.message}`)
+    }
+  }
+
+  const startEditDraft = (draft) => {
+    setEditingDraft({ ...draft })
+  }
+
+  const saveDraftEdit = async () => {
+    try {
+      await fetch('/api/drafts/edit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          draft_id: editingDraft.draft_id,
+          updates: {
+            subject: editingDraft.subject,
+            body: editingDraft.body
+          }
+        })
+      })
+      setEditingDraft(null)
+      loadPendingDrafts()
+    } catch (e) {
+      alert(`Failed to edit draft: ${e.message}`)
+    }
+  }
+
+  const resetConversation = async () => {
     setMessages([{
       role: 'assistant',
       content: `Conversation reset. How can I help you, ${config.user_name}?`
     }])
-    removeAttachment()
-  }
-
-  const handleKeyPress = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      sendMessage()
-    }
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-12rem)] bg-white rounded-xl shadow-sm border border-gray-100">
-      <div className="flex justify-between items-center p-4 border-b">
-        <div>
-          <h2 className="text-xl font-bold text-charcoal">{config.ea_name}</h2>
-          <p className="text-sm text-gray-600">Your AI Executive Assistant</p>
+    <div className="flex flex-col h-[calc(100vh-12rem)]">
+      {pendingDrafts.length > 0 && (
+        <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+          <h3 className="font-semibold text-amber-900 mb-3 flex items-center gap-2">
+            <Mail className="w-5 h-5" />
+            {pendingDrafts.length} Email{pendingDrafts.length > 1 ? 's' : ''} Awaiting Approval
+          </h3>
+          <div className="space-y-3">
+            {pendingDrafts.map(draft => (
+              <div key={draft.draft_id} className="bg-white p-4 rounded-lg border border-amber-100">
+                <div className="flex justify-between items-start mb-2">
+                  <div className="flex-1">
+                    <div className="text-sm text-gray-500">To: {draft.to}</div>
+                    <div className="font-medium text-gray-900">{draft.subject}</div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => startEditDraft(draft)}
+                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                      title="Edit"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => approveDraft(draft.draft_id)}
+                      className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
+                      title="Send"
+                    >
+                      <Check className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => rejectDraft(draft.draft_id)}
+                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+                <div className="text-sm text-gray-600 mt-2 p-3 bg-gray-50 rounded max-h-32 overflow-y-auto whitespace-pre-wrap">
+                  {draft.body}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
-        <button
-          onClick={resetConversation}
-          className="flex items-center gap-2 text-gray-600 hover:text-coral px-3 py-2 rounded-lg hover:bg-gray-50"
-        >
-          <Trash2 className="w-4 h-4" />
-          Reset
-        </button>
-      </div>
+      )}
 
-      <div className="flex-1 overflow-y-auto p-6 space-y-4">
+      {editingDraft && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+            <h3 className="text-xl font-bold mb-4">Edit Email</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">To:</label>
+                <input
+                  type="text"
+                  value={editingDraft.to}
+                  disabled
+                  className="w-full p-2 border rounded bg-gray-50"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Subject:</label>
+                <input
+                  type="text"
+                  value={editingDraft.subject}
+                  onChange={(e) => setEditingDraft({...editingDraft, subject: e.target.value})}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Body:</label>
+                <textarea
+                  value={editingDraft.body}
+                  onChange={(e) => setEditingDraft({...editingDraft, body: e.target.value})}
+                  className="w-full p-2 border rounded h-64"
+                />
+              </div>
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => setEditingDraft(null)}
+                  className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveDraftEdit}
+                  className="px-4 py-2 bg-teal text-white rounded-lg hover:bg-teal-600"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex-1 overflow-y-auto mb-4 space-y-4">
         {messages.map((msg, idx) => (
           <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div className={`max-w-2xl ${msg.role === 'user' ? 'bg-teal text-white' : 'bg-gray-100 text-charcoal'} rounded-2xl px-6 py-4`}>
-              {msg.role === 'assistant' && (
-                <div className="flex items-center gap-2 mb-2 text-teal font-semibold text-sm">
-                  <span className="w-2 h-2 bg-teal rounded-full animate-pulse"></span>
-                  {config.ea_name}
-                </div>
-              )}
-              
               <div className="whitespace-pre-wrap">{msg.content}</div>
-              
               {msg.attachment && (
-                <div className="mt-2 pt-2 border-t border-white/20 text-sm flex items-center gap-2">
-                  <Paperclip className="w-4 h-4" />
-                  <span>{msg.attachment.name}</span>
-                  <span className="text-xs opacity-75">({(msg.attachment.size / 1024).toFixed(1)}KB)</span>
+                <div className="mt-2 text-sm opacity-75">
+                  📎 {msg.attachment.name}
                 </div>
               )}
-              
-              {msg.actions && msg.actions.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-gray-200 text-sm">
-                  <div className="font-medium mb-2">✅ Actions completed:</div>
-                  {msg.actions.map((action, i) => (
-                    <div key={i} className="ml-4 text-gray-600">• {action}</div>
+              {msg.drafts && msg.drafts.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-gray-300">
+                  <div className="text-sm font-semibold mb-2">📧 Email drafts created:</div>
+                  {msg.drafts.map((draft, i) => (
+                    <div key={i} className="text-sm">• {draft.name} ({draft.to})</div>
                   ))}
-                </div>
-              )}
-
-              {msg.function_calls && msg.function_calls.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-gray-200 text-sm">
-                  <div className="font-medium mb-2">🔧 Functions executed:</div>
-                  {msg.function_calls.map((call, i) => (
-                    <div key={i} className="ml-4 text-gray-600">
-                      • {call.function?.name || call.name}
-                    </div>
-                  ))}
+                  <div className="text-xs mt-2 opacity-75">Review and approve above ⬆️</div>
                 </div>
               )}
             </div>
           </div>
         ))}
-        
         {loading && (
           <div className="flex justify-start">
             <div className="bg-gray-100 rounded-2xl px-6 py-4">
-              <div className="flex items-center gap-2 text-teal">
-                <Loader className="w-4 h-4 animate-spin" />
-                <span className="text-sm">{config.ea_name} is processing...</span>
+              <div className="flex gap-2">
+                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
+                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
+                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
               </div>
             </div>
           </div>
         )}
-        
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="p-4 border-t bg-gray-50">
-        {attachment && (
-          <div className="mb-3 flex items-center gap-3 bg-white p-3 rounded-lg border border-gray-200">
-            <Paperclip className="w-5 h-5 text-teal" />
-            <div className="flex-1">
-              <div className="font-medium text-sm">{attachment.name}</div>
-              <div className="text-xs text-gray-500">
-                {(attachment.size / 1024).toFixed(1)}KB • {attachment.type}
-              </div>
-            </div>
-            <button onClick={removeAttachment} className="text-gray-400 hover:text-red-500">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-        )}
-        
-        <div className="flex gap-3">
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileSelect}
-            className="hidden"
-            accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.jpg,.jpeg,.png,.gif"
-          />
-          
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-100"
-            disabled={loading}
-          >
-            <Paperclip className="w-5 h-5 text-gray-600" />
-          </button>
-          
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder={`Ask ${config.ea_name} anything... Try: "Clean my spam" or attach a document`}
-            className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal resize-none"
-            rows="2"
-            disabled={loading}
-          />
-          
-          <button
-            onClick={sendMessage}
-            disabled={loading || (!input.trim() && !attachment)}
-            className="px-6 py-3 bg-teal text-white rounded-lg hover:bg-teal/90 disabled:opacity-50 transition-colors flex items-center gap-2"
-          >
-            <Send className="w-5 h-5" />
-            Send
+      {attachment && (
+        <div className="mb-3 flex items-center gap-2 bg-teal-50 px-4 py-2 rounded-lg">
+          <Paperclip className="w-4 h-4 text-teal-600" />
+          <span className="text-sm text-teal-900">{attachment.name}</span>
+          <button onClick={removeAttachment} className="ml-auto text-teal-600 hover:text-teal-800">
+            <X className="w-4 h-4" />
           </button>
         </div>
-        
-        <div className="mt-3 text-xs text-gray-500">
-          <strong>Try:</strong> "Clean spam" • "Setup email folders" • "Check calendar" • Attach files for editing
-        </div>
+      )}
+
+      <div className="flex gap-2">
+        <input
+          ref={fileInputRef}
+          type="file"
+          onChange={handleFileChange}
+          className="hidden"
+          accept=".pdf,.doc,.docx,.txt,.ppt,.pptx"
+        />
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          className="p-3 text-gray-500 hover:bg-gray-100 rounded-xl"
+          title="Attach file"
+        >
+          <Paperclip className="w-5 h-5" />
+        </button>
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+          placeholder={`Ask ${config.ea_name} anything...`}
+          className="flex-1 px-6 py-3 bg-gray-50 rounded-xl border-2 border-transparent focus:border-teal focus:outline-none"
+          disabled={loading}
+        />
+        <button
+          onClick={sendMessage}
+          disabled={loading || (!input.trim() && !attachment)}
+          className="px-6 py-3 bg-teal text-white rounded-xl hover:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+        >
+          <Send className="w-5 h-5" />
+          Send
+        </button>
+        <button
+          onClick={resetConversation}
+          className="px-4 py-3 text-gray-500 hover:bg-gray-100 rounded-xl"
+          title="Reset conversation"
+        >
+          Reset
+        </button>
       </div>
     </div>
   )

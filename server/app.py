@@ -506,6 +506,87 @@ async def assistant_command(request: AssistantCommandRequest):
         logger.error(f"Assistant command error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# ===== Email Draft Management Endpoints =====
+from server.draft_manager import draft_manager
+from server.managers.email_manager import EmailManager
+
+email_manager_instance = EmailManager()
+
+@app.get("/api/drafts/pending", dependencies=[Depends(verify_key)])
+async def get_pending_drafts():
+    """Get all pending email drafts"""
+    return {"drafts": draft_manager.list_pending()}
+
+@app.post("/api/drafts/approve", dependencies=[Depends(verify_key)])
+async def approve_draft(request: dict):
+    """Approve and send a draft email"""
+    draft_id = request.get("draft_id")
+    
+    if not draft_id:
+        raise HTTPException(status_code=400, detail="draft_id required")
+    
+    draft = draft_manager.get_draft(draft_id)
+    
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    
+    draft_manager.approve_draft(draft_id)
+    
+    try:
+        result = email_manager_instance.send_email(
+            to=draft["to"],
+            subject=draft["subject"],
+            body=draft["body"],
+            from_account=draft["from_account"],
+            cc=draft.get("cc"),
+            bcc=draft.get("bcc")
+        )
+        
+        draft_manager.delete_draft(draft_id)
+        
+        return {
+            "status": "success",
+            "message": "Email sent successfully",
+            "result": result
+        }
+    except Exception as e:
+        logger.error(f"Failed to send approved email: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/drafts/reject", dependencies=[Depends(verify_key)])
+async def reject_draft(request: dict):
+    """Reject and delete a draft email"""
+    draft_id = request.get("draft_id")
+    
+    if not draft_id:
+        raise HTTPException(status_code=400, detail="draft_id required")
+    
+    if draft_manager.delete_draft(draft_id):
+        return {"status": "success", "message": "Draft deleted"}
+    else:
+        raise HTTPException(status_code=404, detail="Draft not found")
+
+@app.post("/api/drafts/edit", dependencies=[Depends(verify_key)])
+async def edit_draft(request: dict):
+    """Edit a draft email"""
+    draft_id = request.get("draft_id")
+    updates = request.get("updates", {})
+    
+    if not draft_id:
+        raise HTTPException(status_code=400, detail="draft_id required")
+    
+    draft = draft_manager.get_draft(draft_id)
+    
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    
+    for field in ["subject", "body", "to", "cc", "bcc"]:
+        if field in updates:
+            draft[field] = updates[field]
+    
+    return {"status": "success", "draft": draft}
+
+
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import os
