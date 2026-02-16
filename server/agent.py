@@ -185,10 +185,10 @@ Always be concise but thorough. If you need more information, ask."""
                 result_data = tool_result.get("result", {})
                 if isinstance(result_data, dict) and "drafts_created" in result_data:
                     drafts_created.extend(result_data["drafts_created"])
+            logger.info(f"Extracted drafts_created: {drafts_created}")
             return {
                 "response": final_message,
                 "tool_calls": tool_calls,
-            logger.info(f"Extracted drafts_created: {drafts_created}")
                 "tool_results": tool_results,
                 "drafts_created": drafts_created,
                 "timestamp": datetime.now().isoformat()
