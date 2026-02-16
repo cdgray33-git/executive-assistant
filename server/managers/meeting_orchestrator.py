@@ -166,6 +166,7 @@ Best regards"""
             except:
                 pass
             
+            logger.info(f"schedule_meeting returning drafts_created: {drafts_created}")
             return {"status": "success", "meeting": {"event_id": event["id"], "title": title, "date": date, "time": time, "duration": duration, "attendees": resolved_attendees}, "drafts_created": drafts_created, "message": f"Meeting invitations drafted. Created {len(drafts_created)}/{len(resolved_attendees)} invites. Please review and approve in the chat interface."}
         except Exception as e:
             logger.error(f"Error scheduling meeting: {e}")
