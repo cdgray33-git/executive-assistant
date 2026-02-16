@@ -503,6 +503,7 @@ async def assistant_command(request: AssistantCommandRequest):
             **result
         }
     except Exception as e:
+        logger.info(f"Returning to UI: status={result.get("status")}, has_drafts={"drafts_created" in result}")
         logger.error(f"Assistant command error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
