@@ -141,7 +141,7 @@ Best regards"""
                         from_account=self.email_mgr.get_primary_account(),
                         context={
                             "type": "meeting_invitation",
-                            "meeting_id": event_id,
+                            "meeting_id": event["id"],
                             "attendee": attendee
                         }
                     )
@@ -166,7 +166,7 @@ Best regards"""
             except:
                 pass
             
-            return {"status": "success", "meeting": {"event_id": event["id"], "title": title, "date": date, "time": time, "duration": duration, "attendees": resolved_attendees}, "drafts_created": drafts_created, "message": f"Meeting scheduled. Created {len(drafts_created)}/{len(resolved_attendees)} invites"}
+            return {"status": "success", "meeting": {"event_id": event["id"], "title": title, "date": date, "time": time, "duration": duration, "attendees": resolved_attendees}, "drafts_created": drafts_created, "message": f"Meeting invitations drafted. Created {len(drafts_created)}/{len(resolved_attendees)} invites. Please review and approve in the chat interface."}
         except Exception as e:
             logger.error(f"Error scheduling meeting: {e}")
             return {"status": "error", "error": str(e)}

@@ -178,13 +178,21 @@ Always be concise but thorough. If you need more information, ask."""
             if len(self.conversation_history) > 20:
                 self.conversation_history = self.conversation_history[-20:]
             
+
+            # Extract drafts_created from tool results
+            drafts_created = []
+            for tool_result in tool_results:
+                result_data = tool_result.get("result", {})
+                if isinstance(result_data, dict) and "drafts_created" in result_data:
+                    drafts_created.extend(result_data["drafts_created"])
             return {
                 "response": final_message,
                 "tool_calls": tool_calls,
                 "tool_results": tool_results,
+                "drafts_created": drafts_created,
                 "timestamp": datetime.now().isoformat()
             }
-            
+
         except Exception as e:
             logger.error(f"Agent error: {e}", exc_info=True)
             return {
@@ -192,7 +200,7 @@ Always be concise but thorough. If you need more information, ask."""
                 "error": str(e),
                 "timestamp": datetime.now().isoformat()
             }
-    
+
     def reset_conversation(self):
         """Clear conversation history"""
         self.conversation_history = []
