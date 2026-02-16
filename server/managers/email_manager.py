@@ -73,9 +73,16 @@ class EmailManager:
 
     def get_primary_account(self) -> str:
         """Get the primary email account for sending"""
-        accounts = self.account_mgr.list_accounts()
-        if accounts:
-            return accounts[0].get("account_id", "")
+        result = self.account_mgr.list_accounts()
+        logger.info(f"list_accounts result: {result}")
+        
+        if result.get("status") == "success" and result.get("accounts"):
+            primary_email = result["accounts"][0].get("email", "")
+            logger.info(f"get_primary_account returning: {primary_email}")
+            return primary_email
+        
+        logger.warning("No accounts configured, returning empty string")
+        return ""
         return ""
     
     def _categorize_email(self, email: Dict) -> str:
