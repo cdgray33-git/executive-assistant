@@ -181,6 +181,7 @@ Always be concise but thorough. If you need more information, ask."""
 
             # Extract drafts_created from tool results
             drafts_created = []
+            logger.info(f"DEBUG tool_results: {tool_results}")
             for tool_result in tool_results:
                 result_data = tool_result.get("result", {})
                 if isinstance(result_data, dict) and "drafts_created" in result_data:
