@@ -183,7 +183,13 @@ Always be concise but thorough. If you need more information, ask."""
             drafts_created = []
             logger.info(f"DEBUG tool_results: {tool_results}")
             for tool_result in tool_results:
+                # Handle nested result structure from execute_function
                 result_data = tool_result.get("result", {})
+                
+                # Check if result is nested (from execute_function wrapper)
+                if "result" in result_data and isinstance(result_data["result"], dict):
+                    result_data = result_data["result"]
+                
                 if isinstance(result_data, dict) and "drafts_created" in result_data:
                     drafts_created.extend(result_data["drafts_created"])
             logger.info(f"Extracted drafts_created: {drafts_created}")
