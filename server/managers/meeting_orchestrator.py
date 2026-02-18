@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from server.managers.email_manager import EmailManager
 from server.managers.contact_manager import ContactManager
 from server.managers.calendar_block_manager import CalendarBlockManager
+from server.managers.calendar_manager import CalendarManager
 from datetime import datetime, timedelta
 
 logger = logging.getLogger("meeting_orchestrator")
