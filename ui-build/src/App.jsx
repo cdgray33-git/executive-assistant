@@ -3,7 +3,6 @@ import { Mail, Calendar, Users, Settings, MessageSquare, ChevronDown, ChevronUp,
 import { Calendar as CalendarIcon, CheckCircle2, XCircle, Clock, AlertCircle } from 'lucide-react'
 import ChatInterface from './ChatInterface'
 import MeetingsTab from './MeetingsTab'
-import MeetingsTab from './MeetingsTab'
 
 function App() {
   const [health, setHealth] = useState(null)
