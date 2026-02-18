@@ -5,7 +5,7 @@ Allows users to block time on their calendar
 import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
-from server.database.connection import get_db_connection
+from server.database.connection import get_db_session
 from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ class CalendarBlockManager:
             {"status": "success", "block_id": 123}
         """
         try:
-            with get_db_connection() as db:
+            with get_db_session() as db:
                 result = db.execute(text("""
                     INSERT INTO calendar_blocks 
                     (user_id, title, start_time, end_time, block_type, description)
@@ -74,7 +74,7 @@ class CalendarBlockManager:
         try:
             conflicts = []
             
-            with get_db_connection() as db:
+            with get_db_session() as db:
                 # Check calendar blocks
                 blocks = db.execute(text("""
                     SELECT title, start_time, end_time, block_type
@@ -133,7 +133,7 @@ class CalendarBlockManager:
                    end_date: datetime) -> List[Dict]:
         """Get all calendar blocks for user in date range"""
         try:
-            with get_db_connection() as db:
+            with get_db_session() as db:
                 blocks = db.execute(text("""
                     SELECT id, title, start_time, end_time, block_type, description
                     FROM calendar_blocks
@@ -159,7 +159,7 @@ class CalendarBlockManager:
     def delete_block(self, user_id: str, block_id: int) -> Dict[str, Any]:
         """Delete a calendar block"""
         try:
-            with get_db_connection() as db:
+            with get_db_session() as db:
                 db.execute(text("""
                     DELETE FROM calendar_blocks
                     WHERE id = :bid AND user_id = :uid

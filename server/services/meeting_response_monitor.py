@@ -8,7 +8,7 @@ from typing import Dict, Any, List
 from datetime import datetime, timedelta
 from server.managers.email_manager import EmailManager
 from server.managers.meeting_response_parser import MeetingResponseParser
-from server.database.connection import get_db_connection
+from server.database.connection import get_db_session
 from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
@@ -89,7 +89,7 @@ class MeetingResponseMonitor:
     def _get_pending_meetings(self) -> List[Dict]:
         """Get meetings awaiting responses"""
         try:
-            with get_db_connection() as db:
+            with get_db_session() as db:
                 meetings = db.execute(text("""
                     SELECT id, event_id, ics_uid, title, attendees, 
                            date, time, duration, last_checked
@@ -134,7 +134,7 @@ class MeetingResponseMonitor:
             logger.info(f"Processing {response['type']} from {response['attendee_email']} for meeting: {meeting['title']}")
             
             # Update attendee responses
-            with get_db_connection() as db:
+            with get_db_session() as db:
                 # Get current attendee responses
                 result = db.execute(text("""
                     SELECT attendee_responses FROM meetings WHERE id = :mid
@@ -205,7 +205,7 @@ class MeetingResponseMonitor:
             if not meeting_ids:
                 return
             
-            with get_db_connection() as db:
+            with get_db_session() as db:
                 db.execute(text("""
                     UPDATE meetings
                     SET last_checked = NOW()
