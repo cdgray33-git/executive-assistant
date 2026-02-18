@@ -8,8 +8,6 @@ from datetime import datetime, timedelta
 
 from server.managers.email_manager import EmailManager
 from server.managers.calendar_manager import CalendarManager
-from server.managers.calendar_block_manager import CalendarBlockManager
-from dateutil import parser as dateparser
 from server.managers.contact_manager import ContactManager
 
 logger = logging.getLogger("meeting_orchestrator")
@@ -129,32 +127,18 @@ Best regards"""
             invite_body = self._draft_meeting_invite(title, date, time, duration, resolved_attendees)
             
             # Step 5: Send invites
-            drafts_created = []
-            # Create email drafts instead of sending immediately
-            from server.draft_manager import draft_manager
-            
-            drafts_created = []
+            invites_sent = []
+            failed_invites = []
             for attendee in resolved_attendees:
                 try:
-                    draft_id = draft_manager.create_draft(
-                        to=attendee["email"],
-                        subject=f"Meeting Invitation: {title}",
-                        body=invite_body,
-                        from_account=self.email_mgr.get_primary_account(),
-                        context={
-                            "type": "meeting_invitation",
-                            "meeting_id": event["id"],
-                            "attendee": attendee
-                        }
-                    )
-                    drafts_created.append({
-                        "to": attendee["email"],
-                        "name": attendee["name"],
-                        "draft_id": draft_id
-                    })
-                    logger.info(f"Created email draft for {attendee['email']}")
+                    result = self.email_mgr.send_email(to=attendee["email"], subject=f"Meeting Invitation: {title}", body=invite_body)
+                    if result.get("status") == "success":
+                        invites_sent.append({"to": attendee["email"], "name": attendee["name"], "status": "sent"})
+                        logger.info(f"Sent meeting invite to {attendee['email']}")
+                    else:
+                        failed_invites.append({"to": attendee["email"], "error": result.get("error")})
                 except Exception as e:
-                    logger.error(f"Failed to create draft for {attendee['email']}: {e}")
+                    failed_invites.append({"to": attendee["email"], "error": str(e)})
             
             # Step 6: Store in database (optional)
             try:
@@ -162,32 +146,13 @@ Best regards"""
                 from sqlalchemy import text
                 import json
                 with get_db_session() as db:
-            # Check for calendar conflicts
-            try:
-                meeting_start = datetime.combine(datetime.strptime(date, "%Y-%m-%d").date(), datetime.strptime(time, "%H:%M").time())
-                meeting_end = meeting_start + timedelta(minutes=duration)
-                availability = self.calendar_block_mgr.check_availability(user_id, meeting_start, meeting_end)
-                
-                if not availability["available"]:
-                    conflicts_str = ", ".join([f"{c["title"]}" for c in availability["conflicts"]])
-                    logger.warning(f"Meeting conflict detected: {conflicts_str}")
-                    return {
-                        "status": "conflict",
-                        "message": f"Time slot conflicts with: {conflicts_str}",
-                        "conflicts": availability["conflicts"],
-                        "suggestion": "Would you like to schedule at a different time?"
-                    }
-            except Exception as conflict_err:
-                logger.warning(f"Conflict check failed (proceeding anyway): {conflict_err}")
-
                     db.execute(text("INSERT INTO meetings (event_id, user_id, title, date, time, duration, description, attendees, status) VALUES (:eid, :uid, :t, :d, :tm, :dur, :desc, :att, :st)"), 
                               {"eid": event["id"], "uid": "default_user", "t": title, "d": date, "tm": time, "dur": duration, "desc": description or "", "att": json.dumps(resolved_attendees), "st": "scheduled"})
                 logger.info(f"Meeting stored in database")
             except:
                 pass
             
-            logger.info(f"schedule_meeting returning drafts_created: {drafts_created}")
-            return {"status": "success", "meeting": {"event_id": event["id"], "title": title, "date": date, "time": time, "duration": duration, "attendees": resolved_attendees}, "drafts_created": drafts_created, "message": f"Meeting invitations drafted. Created {len(drafts_created)}/{len(resolved_attendees)} invites. Please review and approve in the chat interface."}
+            return {"status": "success", "meeting": {"event_id": event["id"], "title": title, "date": date, "time": time, "duration": duration, "attendees": resolved_attendees}, "invites_sent": invites_sent, "failed_invites": failed_invites, "message": f"Meeting scheduled. Sent {len(invites_sent)}/{len(resolved_attendees)} invites"}
         except Exception as e:
             logger.error(f"Error scheduling meeting: {e}")
             return {"status": "error", "error": str(e)}

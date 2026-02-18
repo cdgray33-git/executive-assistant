@@ -12,6 +12,7 @@ from server.managers.calendar_manager import CalendarManager
 from server.managers.contact_manager import ContactManager
 from server.managers.note_manager import NoteManager
 from server.managers.meeting_orchestrator import MeetingOrchestrator
+from server.assistant_functions_calendar import block_calendar, check_availability, get_calendar_blocks, CALENDAR_FUNCTIONS
 from server.managers.document_generator import DocumentGenerator
 
 logger = logging.getLogger("assistant_functions")

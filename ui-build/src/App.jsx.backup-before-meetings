@@ -1,9 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Mail, Calendar, Users, Settings, MessageSquare, ChevronDown, ChevronUp, Zap, CheckCircle, Plus, Trash2, TestTube } from 'lucide-react'
-import { Calendar as CalendarIcon, CheckCircle2, XCircle, Clock, AlertCircle } from 'lucide-react'
 import ChatInterface from './ChatInterface'
-import MeetingsTab from './MeetingsTab'
-import MeetingsTab from './MeetingsTab'
 
 function App() {
   const [health, setHealth] = useState(null)
@@ -17,8 +14,6 @@ function App() {
   const [selectedProvider, setSelectedProvider] = useState(null)
   const [accountForm, setAccountForm] = useState({ account_id: '', email: '', app_password: '', client_id: '', client_secret: '' })
   const [loading, setLoading] = useState(false)
-  const [meetings, setMeetings] = useState([])
-  const [meetingsLoading, setMeetingsLoading] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -31,23 +26,9 @@ function App() {
       if (data.config) setConfig(data.config)
     }).catch(() => {})
     loadAccounts()
-    loadMeetings()
   }
 
   const loadAccounts = () => {
-  const loadMeetings = async () => {
-    setMeetingsLoading(true)
-    try {
-      const response = await fetch('/api/meetings?start_date=' + new Date().toISOString().split('T')[0], {
-        headers: { 'X-API-Key': localStorage.getItem('api_key') || 'dev-key-12345' }
-      })
-      const data = await response.json()
-      if (data.meetings) setMeetings(data.meetings)
-    } catch (error) {
-      console.error('Load meetings failed:', error)
-    }
-    setMeetingsLoading(false)
-  }
     fetch('/api/accounts', {
       headers: { 'X-API-Key': localStorage.getItem('api_key') || 'dev-key-12345' }
     })
@@ -131,7 +112,6 @@ function App() {
         setAccountForm({ account_id: '', email: '', app_password: '', client_id: '', client_secret: '' })
         setSelectedProvider(null)
         loadAccounts()
-    loadMeetings()
       } else {
         alert(`❌ Error: ${data.error || 'Failed to add account'}`)
       }
@@ -172,7 +152,6 @@ function App() {
       if (data.status === 'success') {
         alert('✅ Account removed')
         loadAccounts()
-    loadMeetings()
       } else {
         alert(`❌ Error: ${data.error}`)
       }
@@ -468,14 +447,6 @@ function App() {
 
       <main className="max-w-7xl mx-auto px-6 py-8">
         <div style={{ display: activeTab === 'chat' ? 'block' : 'none' }}>
-          <button
-            onClick={() => setActiveTab('meetings')}
-            className={`px-4 py-2 rounded-lg transition-colors ${
-              activeTab === 'meetings' ? 'bg-blue-500 text-white' : 'text-gray-700 hover:bg-gray-100'
-            }`}
-          >
-            📅 Meetings
-          </button>
           <div>
             <ChatInterface />
             

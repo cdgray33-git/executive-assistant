@@ -602,3 +602,116 @@ if os.path.exists(ui_dist):
     @app.get("/")
     async def serve_ui():
         return FileResponse(os.path.join(ui_dist, "index.html"))
+
+# ==================== MEETINGS API ====================
+
+@app.get("/api/meetings")
+async def get_meetings(
+    status: str = None,
+    start_date: str = None,
+    end_date: str = None,
+    x_api_key: Optional[str] = Header(None)
+):
+    """
+    Get meetings with optional filters
+    
+    Query params:
+        status: Filter by status (scheduled, confirmed, cancelled)
+        start_date: Start date filter (YYYY-MM-DD)
+        end_date: End date filter (YYYY-MM-DD)
+    """
+    try:
+        verify_key(x_api_key)
+        
+        from server.database.connection import get_db_connection
+        from sqlalchemy import text
+        
+        query = """
+            SELECT id, event_id, title, date, time, duration, 
+                   attendees, status, response_status, attendee_responses,
+                   description, created_at
+            FROM meetings
+            WHERE 1=1
+        """
+        params = {}
+        
+        if status:
+            query += " AND status = :status"
+            params["status"] = status
+        
+        if start_date:
+            query += " AND date >= :start_date"
+            params["start_date"] = start_date
+        
+        if end_date:
+            query += " AND date <= :end_date"
+            params["end_date"] = end_date
+        
+        query += " ORDER BY date, time"
+        
+        with get_db_connection() as db:
+            meetings = db.execute(text(query), params).fetchall()
+        
+        meetings_list = [{
+            "id": m[0],
+            "event_id": m[1],
+            "title": m[2],
+            "date": m[3].isoformat() if m[3] else None,
+            "time": str(m[4]) if m[4] else None,
+            "duration": m[5],
+            "attendees": m[6],
+            "status": m[7],
+            "response_status": m[8],
+            "attendee_responses": m[9] or [],
+            "description": m[10],
+            "created_at": m[11].isoformat() if m[11] else None
+        } for m in meetings]
+        
+        return {
+            "status": "success",
+            "meetings": meetings_list,
+            "count": len(meetings_list)
+        }
+        
+    except Exception as e:
+        logger.error(f"Get meetings failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/meetings/{meeting_id}/responses")
+async def get_meeting_responses(
+    meeting_id: int,
+    x_api_key: Optional[str] = Header(None)
+):
+    """Get response details for a specific meeting"""
+    try:
+        verify_key(x_api_key)
+        
+        from server.database.connection import get_db_connection
+        from sqlalchemy import text
+        
+        with get_db_connection() as db:
+            meeting = db.execute(text("""
+                SELECT title, attendees, attendee_responses, response_status
+                FROM meetings WHERE id = :mid
+            """), {"mid": meeting_id}).fetchone()
+        
+        if not meeting:
+            raise HTTPException(status_code=404, detail="Meeting not found")
+        
+        return {
+            "status": "success",
+            "meeting": {
+                "title": meeting[0],
+                "attendees": meeting[1],
+                "responses": meeting[2] or [],
+                "overall_status": meeting[3]
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get meeting responses failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
