@@ -468,7 +468,7 @@ function App() {
 
       <main className="max-w-7xl mx-auto px-6 py-8">
         <div style={{ display: activeTab === 'chat' ? 'block' : 'none' }}>
-          <button
+  {activeTab === 'chat' && (
             onClick={() => setActiveTab('meetings')}
             className={`px-4 py-2 rounded-lg transition-colors ${
               activeTab === 'meetings' ? 'bg-blue-500 text-white' : 'text-gray-700 hover:bg-gray-100'
@@ -491,7 +491,7 @@ function App() {
                   </span>
                 </div>
                 {showCapabilities ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-              </button>
+  )}
               
               {showCapabilities && functions && (
                 <div className="mt-3 bg-white rounded-xl p-6 shadow-sm border border-gray-100">
