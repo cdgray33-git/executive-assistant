@@ -522,21 +522,14 @@ function App() {
           </div>
         )}
 
-
-        {activeTab === 'calendar' && (
-          <div className="bg-white rounded-xl p-8 shadow-sm border border-gray-100 text-center">
-            <h2 className="text-2xl font-bold text-charcoal mb-4">Calendar</h2>
-            <p className="text-gray-500">Use the Chat tab to interact with calendar</p>
-          </div>
-        )}
-
-        {activeTab === 'meetings' && (
-          <MeetingsTab
-            meetings={meetings}
-            loading={meetingsLoading}
-            onRefresh={loadMeetings}
-          />
-        )}
+        {['calendar', 'meetings'].map(tab => (
+          activeTab === tab && (
+            <div key={tab} className="bg-white rounded-xl p-8 shadow-sm border border-gray-100 text-center">
+              <h2 className="text-2xl font-bold text-charcoal mb-4 capitalize">{tab}</h2>
+              <p className="text-gray-500">Use the Chat tab to interact with {tab}</p>
+            </div>
+          )
+        ))}
       </main>
     </div>
   )
