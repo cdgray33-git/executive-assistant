@@ -34,28 +34,27 @@ function App() {
   }
 
   const loadAccounts = () => {
-    fetch("/api/accounts", {
-      headers: { "X-API-Key": localStorage.getItem("api_key") || "dev-key-12345" }
+  const loadMeetings = async () => {
+    setMeetingsLoading(true)
+    try {
+      const response = await fetch('/api/meetings?start_date=' + new Date().toISOString().split('T')[0], {
+        headers: { 'X-API-Key': localStorage.getItem('api_key') || 'dev-key-12345' }
+      })
+      const data = await response.json()
+      if (data.meetings) setMeetings(data.meetings)
+    } catch (error) {
+      console.error('Load meetings failed:', error)
+    }
+    setMeetingsLoading(false)
+  }
+    fetch('/api/accounts', {
+      headers: { 'X-API-Key': localStorage.getItem('api_key') || 'dev-key-12345' }
     })
       .then(r => r.json())
       .then(data => {
         if (data.accounts) setAccounts(data.accounts)
       })
       .catch(() => {})
-  }
-
-  const loadMeetings = async () => {
-    setMeetingsLoading(true)
-    try {
-      const response = await fetch("/api/meetings?start_date=" + new Date().toISOString().split("T")[0], {
-        headers: { "X-API-Key": localStorage.getItem("api_key") || "dev-key-12345" }
-      })
-      const data = await response.json()
-      if (data.meetings) setMeetings(data.meetings)
-    } catch (error) {
-      console.error("Load meetings failed:", error)
-    }
-    setMeetingsLoading(false)
   }
 
   const saveSettings = async (newConfig) => {
