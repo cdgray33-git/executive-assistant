@@ -623,7 +623,7 @@ async def get_meetings(
     try:
         verify_key(x_api_key)
         
-        from server.database.connection import get_db_connection
+        from server.database.connection import get_db_session
         from sqlalchemy import text
         
         query = """
@@ -649,7 +649,7 @@ async def get_meetings(
         
         query += " ORDER BY date, time"
         
-        with get_db_connection() as db:
+        with get_db_session() as db:
             meetings = db.execute(text(query), params).fetchall()
         
         meetings_list = [{
@@ -687,10 +687,10 @@ async def get_meeting_responses(
     try:
         verify_key(x_api_key)
         
-        from server.database.connection import get_db_connection
+        from server.database.connection import get_db_session
         from sqlalchemy import text
         
-        with get_db_connection() as db:
+        with get_db_session() as db:
             meeting = db.execute(text("""
                 SELECT title, attendees, attendee_responses, response_status
                 FROM meetings WHERE id = :mid
