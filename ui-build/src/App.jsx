@@ -466,16 +466,9 @@ function App() {
         </div>
       </nav>
 
+                </div>
       <main className="max-w-7xl mx-auto px-6 py-8">
-        <div style={{ display: activeTab === 'chat' ? 'block' : 'none' }}>
-  {activeTab === 'chat' && (
-            onClick={() => setActiveTab('meetings')}
-            className={`px-4 py-2 rounded-lg transition-colors ${
-              activeTab === 'meetings' ? 'bg-blue-500 text-white' : 'text-gray-700 hover:bg-gray-100'
-            }`}
-          >
-            📅 Meetings
-          </button>
+        {activeTab === 'chat' && (
           <div>
             <ChatInterface />
             
@@ -491,7 +484,7 @@ function App() {
                   </span>
                 </div>
                 {showCapabilities ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-  )}
+              </button>
               
               {showCapabilities && functions && (
                 <div className="mt-3 bg-white rounded-xl p-6 shadow-sm border border-gray-100">
@@ -510,8 +503,7 @@ function App() {
               )}
             </div>
           </div>
-        </div>
-
+        )}
         {activeTab === 'email' && (
           <div className="bg-white rounded-xl p-8 shadow-sm border border-gray-100 text-center">
             <Mail className="w-16 h-16 mx-auto mb-4 text-gray-300" />
