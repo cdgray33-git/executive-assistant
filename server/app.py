@@ -652,7 +652,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import os
 
-ui_dist = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ui", "dist")
+ui_dist = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ui-build", "dist")
 
 if os.path.exists(ui_dist):
     # Serve static assets
