@@ -1,0 +1,99 @@
+"""
+Mailbox Organization Manager
+Handles batch processing of email backlogs with pause/resume capability
+"""
+import logging
+from typing import Dict, Any, Optional
+from datetime import datetime, timedelta
+from sqlalchemy import text
+
+from server.database.connection import get_db_session
+from server.managers.email_manager import EmailManager
+from server.managers.account_manager import AccountManager
+
+logger = logging.getLogger("mailbox_organizer")
+
+
+class MailboxOrganizer:
+    """Manages large-scale mailbox organization with progress tracking"""
+    
+    def __init__(self):
+        self.email_mgr = EmailManager()
+        self.account_mgr = AccountManager()
+    
+
+    def get_progress(self, user_id: str, account_id: str) -> Optional[Dict[str, Any]]:
+        """Get current organization progress for account"""
+        try:
+            with get_db_session() as session:
+                result = session.execute(
+                    text("""
+                        SELECT * FROM email_organization_progress
+                        WHERE user_id = :user_id AND account_id = :account_id
+                    """),
+                    {"user_id": user_id, "account_id": account_id}
+                )
+                row = result.fetchone()
+                
+                if not row:
+                    return None
+                
+                progress_pct = (row.processed_count / row.total_emails * 100) if row.total_emails > 0 else 0
+                
+                return {
+                    "status": row.status,
+                    "progress_percent": round(progress_pct, 2),
+                    "processed_count": row.processed_count,
+                    "total_emails": row.total_emails,
+                    "spam_count": row.spam_count,
+                    "keep_count": row.keep_count,
+                    "unsure_count": row.unsure_count,
+                    "moved_count": row.moved_count,
+                    "error_count": row.error_count,
+                    "batch_size": row.batch_size,
+                    "started_at": row.started_at.isoformat() if row.started_at else None,
+                    "estimated_completion": row.estimated_completion.isoformat() if row.estimated_completion else None,
+                    "last_error": row.last_error,
+                    "can_resume": row.status in ['paused', 'error']
+                }
+        except Exception as e:
+            logger.error(f"Error getting progress: {e}")
+            return None
+
+    def get_progress(self, user_id: str, account_id: str) -> Optional[Dict[str, Any]]:
+        """Get current organization progress for account"""
+        try:
+            with get_db_session() as session:
+                result = session.execute(
+                    text("""
+                        SELECT * FROM email_organization_progress
+                        WHERE user_id = :user_id AND account_id = :account_id
+                    """),
+                    {"user_id": user_id, "account_id": account_id}
+                )
+                row = result.fetchone()
+                
+                if not row:
+                    return None
+                
+                progress_pct = (row.processed_count / row.total_emails * 100) if row.total_emails > 0 else 0
+                
+                return {
+                    "status": row.status,
+                    "progress_percent": round(progress_pct, 2),
+                    "processed_count": row.processed_count,
+                    "total_emails": row.total_emails,
+                    "spam_count": row.spam_count,
+                    "keep_count": row.keep_count,
+                    "unsure_count": row.unsure_count,
+                    "moved_count": row.moved_count,
+                    "error_count": row.error_count,
+                    "batch_size": row.batch_size,
+                    "started_at": row.started_at.isoformat() if row.started_at else None,
+                    "estimated_completion": row.estimated_completion.isoformat() if row.estimated_completion else None,
+                    "last_error": row.last_error,
+                    "can_resume": row.status in ['paused', 'error']
+                }
+        except Exception as e:
+            logger.error(f"Error getting progress: {e}")
+            return None

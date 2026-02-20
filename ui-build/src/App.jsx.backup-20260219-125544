@@ -491,7 +491,7 @@ function App() {
                   </span>
                 </div>
                 {showCapabilities ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-              </button>
+  )}
               
               {showCapabilities && functions && (
                 <div className="mt-3 bg-white rounded-xl p-6 shadow-sm border border-gray-100">

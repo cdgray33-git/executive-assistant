@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
-import { Mail, Calendar, Users, Settings, MessageSquare, ChevronDown, ChevronUp, Zap, CheckCircle, Plus, Trash2, TestTube } from 'lucide-react'
+import { Mail, Calendar, Users, Settings, MessageSquare, Loader, Pause, ChevronDown, ChevronUp, Zap, CheckCircle, Plus, Trash2, TestTube } from 'lucide-react'
 import { Calendar as CalendarIcon, CheckCircle2, XCircle, Clock, AlertCircle } from 'lucide-react'
 import ChatInterface from './ChatInterface'
 import MeetingsTab from './MeetingsTab'
+import OrganizeModal from './OrganizeModal'
 
 function App() {
   const [health, setHealth] = useState(null)
@@ -18,6 +19,10 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [meetings, setMeetings] = useState([])
   const [meetingsLoading, setMeetingsLoading] = useState(false)
+  const [organizationProgress, setOrganizationProgress] = useState({})  // Track progress per account
+  const [selectedOrganization, setSelectedOrganization] = useState(null)  // For modal
+  const [organizingAccount, setOrganizingAccount] = useState(null)  // Currently starting organization
+  const [organizationPollInterval, setOrganizationPollInterval] = useState(null)  // Polling timer
 
   useEffect(() => {
     loadData()
@@ -188,6 +193,93 @@ function App() {
     { id: 'apple', name: 'iCloud', type: 'password', icon: '🍎', help: 'appleid.apple.com → Security → App-Specific Passwords' },
     { id: 'comcast', name: 'Comcast', type: 'password', icon: '📮', help: 'xfinity.com → Account settings → App password' }
   ]
+
+
+  // Organization functions
+  const handleStartOrganization = async (accountId) => {
+    setOrganizingAccount(accountId)
+    try {
+      const res = await fetch(`${API_BASE}/api/email/organize/start?account_id=${accountId}&batch_size=3000`, {
+        method: "POST",
+        headers: { "X-API-Key": API_KEY }
+      })
+      const data = await res.json()
+      if (data.status === "success") {
+        startOrganizationPolling(accountId)
+      }
+    } catch (err) {
+      console.error("Failed to start organization:", err)
+    } finally {
+      setOrganizingAccount(null)
+    }
+  }
+
+  const startOrganizationPolling = (accountId = null) => {
+    if (organizationPollInterval) clearInterval(organizationPollInterval)
+    const interval = setInterval(() => pollOrganizationStatus(accountId), 5000)
+    setOrganizationPollInterval(interval)
+    pollOrganizationStatus(accountId)
+  }
+
+  const pollOrganizationStatus = async (accountId = null) => {
+    try {
+      const endpoint = accountId 
+        ? `${API_BASE}/api/email/organize/status/${accountId}` 
+        : `${API_BASE}/api/email/organize/status`
+      const res = await fetch(endpoint, { headers: { "X-API-Key": API_KEY } })
+      const data = await res.json()
+      
+      if (accountId) {
+        setOrganizationProgress(prev => ({ ...prev, [accountId]: data }))
+        if (data.status === "completed" || data.status === "cancelled") {
+          clearInterval(organizationPollInterval)
+        }
+      } else {
+        const progressMap = {}
+        data.accounts?.forEach(acc => { progressMap[acc.account_id] = acc })
+        setOrganizationProgress(progressMap)
+      }
+    } catch (err) {
+      console.error("Failed to poll organization status:", err)
+    }
+  }
+
+  const handlePauseOrganization = async (accountId) => {
+    try {
+      await fetch(`${API_BASE}/api/email/organize/pause?account_id=${accountId}`, {
+        method: "POST",
+        headers: { "X-API-Key": API_KEY }
+      })
+      pollOrganizationStatus(accountId)
+    } catch (err) {
+      console.error("Failed to pause:", err)
+    }
+  }
+
+  const handleCancelOrganization = async (accountId) => {
+    try {
+      await fetch(`${API_BASE}/api/email/organize/cancel?account_id=${accountId}`, {
+        method: "POST",
+        headers: { "X-API-Key": API_KEY }
+      })
+      pollOrganizationStatus(accountId)
+      setSelectedOrganization(null)
+    } catch (err) {
+      console.error("Failed to cancel:", err)
+    }
+  }
+
+  const handleRetryOrganization = async (accountId) => {
+    try {
+      await fetch(`${API_BASE}/api/email/organize/retry?account_id=${accountId}`, {
+        method: "POST",
+        headers: { "X-API-Key": API_KEY }
+      })
+      startOrganizationPolling(accountId)
+    } catch (err) {
+      console.error("Failed to retry:", err)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-cream">
@@ -503,13 +595,97 @@ function App() {
             </div>
           </div>
         )}
+        )}
         {activeTab === 'email' && (
-          <div className="bg-white rounded-xl p-8 shadow-sm border border-gray-100 text-center">
-            <Mail className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-            <h2 className="text-2xl font-bold text-charcoal mb-2">Email Management</h2>
-            <p className="text-gray-500 mb-4">Use the Chat tab to manage your email with natural language</p>
-            <div className="text-sm text-gray-400">
-              <strong>Try:</strong> "Clean spam from all accounts" • "Setup email folders" • "Check my email"
+          <div className="space-y-6">
+            <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+              <h2 className="text-2xl font-bold text-charcoal mb-4">Email Management</h2>
+              
+              {accounts.length === 0 ? (
+                <div className="text-center py-8">
+                  <Mail className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                  <p className="text-gray-500 mb-4">No email accounts connected</p>
+                  <button
+                    onClick={() => setShowAccountModal(true)}
+                    className="px-6 py-2 bg-seafoam text-white rounded-lg hover:bg-teal-600 transition-colors"
+                  >
+                    Add Account
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {accounts.map((account) => {
+                    const orgProgress = organizationProgress[account.id];
+                    const isOrganizing = orgProgress && ['running', 'paused'].includes(orgProgress.status);
+                    
+                    return (
+                      <div key={account.id} className="border border-gray-200 rounded-lg p-4 hover:border-seafoam transition-colors">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Mail className="w-5 h-5 text-seafoam" />
+                              <span className="font-semibold text-charcoal">{account.email}</span>
+                              <span className="text-sm text-gray-500">({account.provider})</span>
+                            </div>
+                            
+                            {isOrganizing && orgProgress ? (
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2 text-sm">
+                                  {orgProgress.status === 'running' && (
+                                    <Loader className="w-4 h-4 animate-spin text-seafoam" />
+                                  )}
+                                  {orgProgress.status === 'paused' && (
+                                    <Pause className="w-4 h-4 text-yellow-500" />
+                                  )}
+                                  <span className="text-gray-600">
+                                    {orgProgress.status === 'running' && 'Organizing...'}
+                                    {orgProgress.status === 'paused' && 'Paused'}
+                                  </span>
+                                  <span className="font-medium text-charcoal">
+                                    {orgProgress.processed_count?.toLocaleString()} / {orgProgress.total_emails?.toLocaleString()}
+                                  </span>
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-2">
+                                  <div 
+                                    className="h-full bg-seafoam rounded-full transition-all"
+                                    style={{ width: `${orgProgress.progress_percent || 0}%` }}
+                                  />
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="text-sm text-gray-500">
+                                {orgProgress?.status === 'completed' 
+                                  ? `✓ Organized ${orgProgress.processed_count?.toLocaleString()} emails` 
+                                  : 'Ready to organize'}
+                              </p>
+                            )}
+                          </div>
+                          
+                          <div className="flex gap-2 ml-4">
+                            {!isOrganizing && (
+                              <button
+                                onClick={() => handleStartOrganization(account.id)}
+                                disabled={organizingAccount === account.id}
+                                className="px-4 py-2 bg-seafoam text-white rounded-lg hover:bg-teal-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                              >
+                                {organizingAccount === account.id ? 'Starting...' : 'Organize Mailbox'}
+                              </button>
+                            )}
+                            {isOrganizing && (
+                              <button
+                                onClick={() => setSelectedOrganization({ account, progress: orgProgress })}
+                                className="px-4 py-2 bg-gray-100 text-charcoal rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+                              >
+                                View Progress
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -530,7 +706,20 @@ function App() {
           />
         )}
       </main>
+
+        {/* Organization Progress Modal */}
+        {selectedOrganization && (
+          <OrganizeModal
+            account={selectedOrganization.account}
+            progress={selectedOrganization.progress}
+            onPause={() => handlePauseOrganization(selectedOrganization.account.id)}
+            onCancel={() => handleCancelOrganization(selectedOrganization.account.id)}
+            onRetry={() => handleRetryOrganization(selectedOrganization.account.id)}
+            onClose={() => setSelectedOrganization(null)}
+          />
+        )}
     </div>
+
   )
 }
 

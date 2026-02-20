@@ -97,36 +97,3 @@ CREATE TABLE IF NOT EXISTS uncategorized_emails (
 
 CREATE INDEX IF NOT EXISTS idx_uncategorized_account ON uncategorized_emails(account_id);
 CREATE INDEX IF NOT EXISTS idx_uncategorized_user ON uncategorized_emails(user_id);
-
--- Mailbox Organization Progress Tracking
-CREATE TABLE IF NOT EXISTS email_organization_progress (
-    id SERIAL PRIMARY KEY,
-    user_id VARCHAR(100) NOT NULL,
-    account_id VARCHAR(255) NOT NULL,
-    provider VARCHAR(50) NOT NULL 
-        CHECK (provider IN ('yahoo', 'gmail', 'hotmail', 'apple', 'comcast', 'imap')),
-    email_address VARCHAR(255) NOT NULL,
-    total_emails INTEGER NOT NULL,
-    processed_count INTEGER DEFAULT 0,
-    last_email_id VARCHAR(255),
-    status VARCHAR(20) DEFAULT 'not_started' 
-        CHECK (status IN ('not_started', 'running', 'paused', 'completed', 'cancelled', 'error')),
-    batch_size INTEGER DEFAULT 3000,
-    current_batch INTEGER DEFAULT 0,
-    spam_count INTEGER DEFAULT 0,
-    keep_count INTEGER DEFAULT 0,
-    unsure_count INTEGER DEFAULT 0,
-    moved_count INTEGER DEFAULT 0,
-    error_count INTEGER DEFAULT 0,
-    started_at TIMESTAMP,
-    last_update TIMESTAMP DEFAULT NOW(),
-    completed_at TIMESTAMP,
-    estimated_completion TIMESTAMP,
-    last_error TEXT,
-    retry_count INTEGER DEFAULT 0,
-    UNIQUE(user_id, account_id)
-);
-
-CREATE INDEX idx_org_progress_user ON email_organization_progress(user_id);
-CREATE INDEX idx_org_progress_status ON email_organization_progress(status);
-CREATE INDEX idx_org_progress_provider ON email_organization_progress(provider);

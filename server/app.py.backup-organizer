@@ -336,62 +336,6 @@ async def delete_emails(request: DeleteRequest):
 
 
 @app.get("/api/email/stats")
-
-
-# ============================================
-# MAILBOX ORGANIZATION ENDPOINTS
-# ============================================
-
-@app.post("/api/email/organize/start", dependencies=[Depends(verify_key)])
-async def start_organization(account_id: str, batch_size: int = 3000, user_id: str = "default_user"):
-    """Start mailbox organization for an account"""
-    from server.managers.mailbox_organizer import MailboxOrganizer
-    organizer = MailboxOrganizer()
-    return organizer.start_organization(user_id, account_id, batch_size)
-
-
-@app.post("/api/email/organize/pause", dependencies=[Depends(verify_key)])
-async def pause_organization(account_id: str, user_id: str = "default_user"):
-    """Pause ongoing organization"""
-    from server.managers.mailbox_organizer import MailboxOrganizer
-    organizer = MailboxOrganizer()
-    return organizer.pause_organization(user_id, account_id)
-
-
-@app.post("/api/email/organize/cancel", dependencies=[Depends(verify_key)])
-async def cancel_organization(account_id: str, user_id: str = "default_user"):
-    """Cancel organization (not resumable)"""
-    from server.managers.mailbox_organizer import MailboxOrganizer
-    organizer = MailboxOrganizer()
-    return organizer.cancel_organization(user_id, account_id)
-
-
-@app.post("/api/email/organize/retry", dependencies=[Depends(verify_key)])
-async def retry_organization(account_id: str, user_id: str = "default_user"):
-    """Retry organization after error"""
-    from server.managers.mailbox_organizer import MailboxOrganizer
-    organizer = MailboxOrganizer()
-    return organizer.retry_organization(user_id, account_id)
-
-
-@app.get("/api/email/organize/status/{account_id}", dependencies=[Depends(verify_key)])
-async def get_organization_status(account_id: str, user_id: str = "default_user"):
-    """Get organization progress for specific account"""
-    from server.managers.mailbox_organizer import MailboxOrganizer
-    organizer = MailboxOrganizer()
-    progress = organizer.get_progress(user_id, account_id)
-    if not progress:
-        return {"status": "not_started", "message": "No organization in progress"}
-    return progress
-
-
-@app.get("/api/email/organize/status", dependencies=[Depends(verify_key)])
-async def get_all_organization_status(user_id: str = "default_user"):
-    """Get organization status for all accounts"""
-    from server.managers.mailbox_organizer import MailboxOrganizer
-    organizer = MailboxOrganizer()
-    return {"accounts": organizer.get_all_progress(user_id)}
-
 async def get_email_stats(account_id: str):
     """Legacy: Get mailbox statistics"""
     try:
@@ -559,7 +503,7 @@ async def assistant_command(request: AssistantCommandRequest):
             **result
         }
     except Exception as e:
-        logger.info(f"Returning to UI: status={result.get('status')}, has_drafts={'drafts_created' in result}")
+        logger.info(f"Returning to UI: status={result.get("status")}, has_drafts={"drafts_created" in result}")
         logger.error(f"Assistant command error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
