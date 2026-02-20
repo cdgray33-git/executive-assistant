@@ -11,6 +11,7 @@ from typing import Optional, Any, Dict, List
 import uuid
 
 from fastapi import FastAPI, Request, Header, Depends, HTTPException
+from fastapi import FastAPI, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -343,11 +344,14 @@ async def delete_emails(request: DeleteRequest):
 # ============================================
 
 @app.post("/api/email/organize/start", dependencies=[Depends(verify_key)])
-async def start_organization(account_id: str, batch_size: int = 3000, user_id: str = "default_user"):
+async def start_organization(background_tasks: BackgroundTasks, account_id: str, batch_size: int = 3000, user_id: str = "default_user"):
     """Start mailbox organization for an account"""
     from server.managers.mailbox_organizer import MailboxOrganizer
     organizer = MailboxOrganizer()
-    return organizer.start_organization(user_id, account_id, batch_size)
+    result = organizer.start_organization(user_id, account_id, batch_size)
+    if result.get("status") == "success":
+        background_tasks.add_task(run_organization_loop, user_id, account_id)
+    return result
 
 
 @app.post("/api/email/organize/pause", dependencies=[Depends(verify_key)])
