@@ -202,7 +202,7 @@ function App() {
     try {
       const res = await fetch(`${API_BASE}/api/email/organize/start?account_id=${accountId}&batch_size=3000`, {
         method: "POST",
-        headers: { "X-API-Key": API_KEY }
+        headers: { "X-API-Key": localStorage.getItem("api_key") || "dev-key-12345" }
       })
       const data = await res.json()
       if (data.status === "success") {
@@ -227,7 +227,7 @@ function App() {
       const endpoint = accountId 
         ? `${API_BASE}/api/email/organize/status/${accountId}` 
         : `${API_BASE}/api/email/organize/status`
-      const res = await fetch(endpoint, { headers: { "X-API-Key": API_KEY } })
+      const res = await fetch(endpoint, { headers: { "X-API-Key": localStorage.getItem("api_key") || "dev-key-12345" } })
       const data = await res.json()
       
       if (accountId) {
@@ -249,7 +249,7 @@ function App() {
     try {
       await fetch(`${API_BASE}/api/email/organize/pause?account_id=${accountId}`, {
         method: "POST",
-        headers: { "X-API-Key": API_KEY }
+        headers: { "X-API-Key": localStorage.getItem("api_key") || "dev-key-12345" }
       })
       pollOrganizationStatus(accountId)
     } catch (err) {
@@ -261,7 +261,7 @@ function App() {
     try {
       await fetch(`${API_BASE}/api/email/organize/cancel?account_id=${accountId}`, {
         method: "POST",
-        headers: { "X-API-Key": API_KEY }
+        headers: { "X-API-Key": localStorage.getItem("api_key") || "dev-key-12345" }
       })
       pollOrganizationStatus(accountId)
       setSelectedOrganization(null)
@@ -274,7 +274,7 @@ function App() {
     try {
       await fetch(`${API_BASE}/api/email/organize/retry?account_id=${accountId}`, {
         method: "POST",
-        headers: { "X-API-Key": API_KEY }
+        headers: { "X-API-Key": localStorage.getItem("api_key") || "dev-key-12345" }
       })
       startOrganizationPolling(accountId)
     } catch (err) {
