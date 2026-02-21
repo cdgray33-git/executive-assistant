@@ -4,6 +4,7 @@ import { Calendar as CalendarIcon, CheckCircle2, XCircle, Clock, AlertCircle } f
 import ChatInterface from './ChatInterface'
 import MeetingsTab from './MeetingsTab'
 import OrganizeModal from './OrganizeModal'
+const API_BASE = window.location.origin.replace(":5173", ":8000") // Dev: 5173->8000, Prod: 8000->8000
 
 function App() {
   const [health, setHealth] = useState(null)
