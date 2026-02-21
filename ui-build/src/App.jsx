@@ -595,7 +595,6 @@ function App() {
             </div>
           </div>
         )}
-        )}
         {activeTab === 'email' && (
           <div className="space-y-6">
             <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
