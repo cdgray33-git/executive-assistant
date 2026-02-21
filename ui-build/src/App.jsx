@@ -614,7 +614,7 @@ function App() {
               ) : (
                 <div className="space-y-4">
                   {accounts.map((account) => {
-                    const orgProgress = organizationProgress[account.id];
+                    const orgProgress = organizationProgress?.[account.id];
                     const isOrganizing = orgProgress && ['running', 'paused'].includes(orgProgress.status);
                     
                     return (
