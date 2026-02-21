@@ -720,6 +720,18 @@ function App() {
             onClose={() => setSelectedOrganization(null)}
           />
         )}
+        
+        {/* Start Organization Modal - Batch Size Input */}
+        {startOrganizeModal && (
+          <StartOrganizeModal
+            account={startOrganizeModal}
+            onStart={(batchSize) => {
+              handleStartOrganization(startOrganizeModal.account_id, batchSize)
+              setStartOrganizeModal(null)
+            }}
+            onClose={() => setStartOrganizeModal(null)}
+          />
+        )}
     </div>
 
   )
