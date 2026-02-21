@@ -4,8 +4,6 @@ import { Calendar as CalendarIcon, CheckCircle2, XCircle, Clock, AlertCircle } f
 import ChatInterface from './ChatInterface'
 import MeetingsTab from './MeetingsTab'
 import OrganizeModal from './OrganizeModal'
-import StartOrganizeModal from './StartOrganizeModal'
-const API_BASE = window.location.origin.replace(":5173", ":8000") // Dev: 5173->8000, Prod: 8000->8000
 
 function App() {
   const [health, setHealth] = useState(null)
@@ -22,7 +20,6 @@ function App() {
   const [meetings, setMeetings] = useState([])
   const [meetingsLoading, setMeetingsLoading] = useState(false)
   const [organizationProgress, setOrganizationProgress] = useState({})  // Track progress per account
-  const [startOrganizeModal, setStartOrganizeModal] = useState(null)  // Account to start organizing
   const [selectedOrganization, setSelectedOrganization] = useState(null)  // For modal
   const [organizingAccount, setOrganizingAccount] = useState(null)  // Currently starting organization
   const [organizationPollInterval, setOrganizationPollInterval] = useState(null)  // Polling timer
@@ -199,12 +196,12 @@ function App() {
 
 
   // Organization functions
-  const handleStartOrganization = async (accountId, batchSize = 3000) => {
+  const handleStartOrganization = async (accountId) => {
     setOrganizingAccount(accountId)
     try {
-      const res = await fetch(`${API_BASE}/api/email/organize/start?account_id=${accountId}&batch_size=${batchSize}`, {
+      const res = await fetch(`${API_BASE}/api/email/organize/start?account_id=${accountId}&batch_size=3000`, {
         method: "POST",
-        headers: { "X-API-Key": localStorage.getItem("api_key") || "dev-key-12345" }
+        headers: { "X-API-Key": API_KEY }
       })
       const data = await res.json()
       if (data.status === "success") {
@@ -229,7 +226,7 @@ function App() {
       const endpoint = accountId 
         ? `${API_BASE}/api/email/organize/status/${accountId}` 
         : `${API_BASE}/api/email/organize/status`
-      const res = await fetch(endpoint, { headers: { "X-API-Key": localStorage.getItem("api_key") || "dev-key-12345" } })
+      const res = await fetch(endpoint, { headers: { "X-API-Key": API_KEY } })
       const data = await res.json()
       
       if (accountId) {
@@ -251,7 +248,7 @@ function App() {
     try {
       await fetch(`${API_BASE}/api/email/organize/pause?account_id=${accountId}`, {
         method: "POST",
-        headers: { "X-API-Key": localStorage.getItem("api_key") || "dev-key-12345" }
+        headers: { "X-API-Key": API_KEY }
       })
       pollOrganizationStatus(accountId)
     } catch (err) {
@@ -263,7 +260,7 @@ function App() {
     try {
       await fetch(`${API_BASE}/api/email/organize/cancel?account_id=${accountId}`, {
         method: "POST",
-        headers: { "X-API-Key": localStorage.getItem("api_key") || "dev-key-12345" }
+        headers: { "X-API-Key": API_KEY }
       })
       pollOrganizationStatus(accountId)
       setSelectedOrganization(null)
@@ -276,7 +273,7 @@ function App() {
     try {
       await fetch(`${API_BASE}/api/email/organize/retry?account_id=${accountId}`, {
         method: "POST",
-        headers: { "X-API-Key": localStorage.getItem("api_key") || "dev-key-12345" }
+        headers: { "X-API-Key": API_KEY }
       })
       startOrganizationPolling(accountId)
     } catch (err) {
@@ -617,11 +614,11 @@ function App() {
               ) : (
                 <div className="space-y-4">
                   {accounts.map((account) => {
-                    const orgProgress = organizationProgress?.[account.account_id];
+                    const orgProgress = organizationProgress?.[account.id];
                     const isOrganizing = orgProgress && ['running', 'paused'].includes(orgProgress.status);
                     
                     return (
-                      <div key={account.account_id} className="border border-gray-200 rounded-lg p-4 hover:border-seafoam transition-colors">
+                      <div key={account.id} className="border border-gray-200 rounded-lg p-4 hover:border-seafoam transition-colors">
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-2">
@@ -666,11 +663,11 @@ function App() {
                           <div className="flex gap-2 ml-4">
                             {!isOrganizing && (
                               <button
-                                onClick={() => setStartOrganizeModal(account)}
-                                disabled={organizingAccount === account.account_id}
+                                onClick={() => handleStartOrganization(account.id)}
+                                disabled={organizingAccount === account.id}
                                 className="px-4 py-2 bg-seafoam text-white rounded-lg hover:bg-teal-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
                               >
-                                {organizingAccount === account.account_id ? 'Starting...' : 'Organize Mailbox'}
+                                {organizingAccount === account.id ? 'Starting...' : 'Organize Mailbox'}
                               </button>
                             )}
                             {isOrganizing && (
@@ -714,9 +711,9 @@ function App() {
           <OrganizeModal
             account={selectedOrganization.account}
             progress={selectedOrganization.progress}
-            onPause={() => handlePauseOrganization(selectedOrganization.account.account_id)}
-            onCancel={() => handleCancelOrganization(selectedOrganization.account.account_id)}
-            onRetry={() => handleRetryOrganization(selectedOrganization.account.account_id)}
+            onPause={() => handlePauseOrganization(selectedOrganization.account.id)}
+            onCancel={() => handleCancelOrganization(selectedOrganization.account.id)}
+            onRetry={() => handleRetryOrganization(selectedOrganization.account.id)}
             onClose={() => setSelectedOrganization(null)}
           />
         )}
