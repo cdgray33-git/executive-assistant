@@ -28,14 +28,14 @@ EMAIL_CATEGORIES = [
     "Private",
     "Finance",
     "Shopping",
-    "Calendar & Events",
-    "Social Media",
+    "Calendar_Events",
+    "Social_Media",
     "Newsletters",
-    "Photos & Media",
+    "Photos_Media",
     "Productivity",
     "Family",
-    "Health & Medical",
-    "Receipts & Confirmations",
+    "Health_Medical",
+    "Receipts_Confirmations",
     "Spam",
     "Archive",
     "Inbox"
@@ -111,14 +111,14 @@ class EmailManager:
         
         # Check for calendar invites
         if "invite" in subject or ".ics" in str(email.get("attachments", [])):
-            return "Calendar & Events"
+            return "Calendar_Events"
         
         # Check for attachments
         attachments = email.get("attachments", [])
         if attachments:
             extensions = [att.get("filename", "").split(".")[-1].lower() for att in attachments]
             if any(ext in ["jpg", "jpeg", "png", "gif", "mp4", "mov"] for ext in extensions):
-                return "Photos & Media"
+                return "Photos_Media"
             if any(ext in ["docx", "pptx", "xlsx", "pdf"] for ext in extensions):
                 return "Productivity"
         
