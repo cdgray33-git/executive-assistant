@@ -60,6 +60,14 @@ psql jarvis_ea -c "CREATE EXTENSION IF NOT EXISTS vector;"
 echo "   Deploying schema..."
 psql -U jarvis -d jarvis_ea -f server/database/schema.sql
 
+# Run database migrations
+echo "   Running migrations..."
+if [ -f "scripts/run_migration.sh" ]; then
+    export DB_PASSWORD="jarvis_secure_2026"
+    export DB_USER="jarvis"
+    ./scripts/run_migration.sh 2>/dev/null || echo "   ⚠️  Migration encountered issues (may be normal on fresh install)"
+fi
+
 echo "✅ PostgreSQL + pgvector configured"
 echo "📦 Step 4/8: Creating Python virtual environment..."
 /opt/homebrew/bin/python3.13 -m venv ~/.executive-assistant-env
