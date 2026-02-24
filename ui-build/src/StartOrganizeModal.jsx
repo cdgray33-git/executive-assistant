@@ -2,12 +2,12 @@ import React, { useState } from 'react';
 import { X, Mail, AlertCircle } from 'lucide-react';
 
 export default function StartOrganizeModal({ account, onStart, onClose }) {
-  const [batchSize, setBatchSize] = useState(3000);
+  const [batchSize, setBatchSize] = useState(100);
   const [error, setError] = useState('');
 
   const handleStart = () => {
-    if (batchSize < 100 || batchSize > 10000) {
-      setError('Batch size must be between 100 and 10,000');
+    if (batchSize < 10 || batchSize > 3000) {
+      setError('Batch size must be between 10 and 3,000');
       return;
     }
     onStart(account.account_id, batchSize);

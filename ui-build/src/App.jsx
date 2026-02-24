@@ -725,7 +725,7 @@ function App() {
         {startOrganizeModal && (
           <StartOrganizeModal
             account={startOrganizeModal}
-            onStart={(batchSize) => {
+            onStart={(accountId, batchSize) => {
               handleStartOrganization(startOrganizeModal.account_id, batchSize)
               setStartOrganizeModal(null)
             }}
