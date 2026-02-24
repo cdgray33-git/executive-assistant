@@ -343,6 +343,37 @@ async def delete_emails(request: DeleteRequest):
 # MAILBOX ORGANIZATION ENDPOINTS
 # ============================================
 
+
+async def run_organization_loop(user_id: str, account_id: str):
+    """Background task to process organization batches"""
+    from server.managers.mailbox_organizer import MailboxOrganizer
+    import asyncio
+    
+    organizer = MailboxOrganizer()
+    
+    while True:
+        try:
+            # Check if still running
+            status = organizer.get_progress(user_id, account_id)
+            if status.get("status") not in ["running"]:
+                logger.info(f"Organization stopped for {account_id}")
+                break
+            
+            # Process next batch
+            result = organizer.process_batch(user_id, account_id)
+            
+            if result.get("status") == "completed":
+                logger.info(f"Organization completed for {account_id}")
+                break
+            
+            # Wait before next batch
+            await asyncio.sleep(2)
+            
+        except Exception as e:
+            logger.error(f"Organization loop error for {account_id}: {e}")
+            break
+
+
 @app.post("/api/email/organize/start", dependencies=[Depends(verify_key)])
 async def start_organization(background_tasks: BackgroundTasks, account_id: str, batch_size: int = 3000, user_id: str = "default_user"):
     """Start mailbox organization for an account"""
