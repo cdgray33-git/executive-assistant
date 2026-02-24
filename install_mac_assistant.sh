@@ -38,10 +38,9 @@ brew services start postgresql@17
 sleep 3
 
 # Install pgvector extension
-if [ ! -d "/tmp/pgvector" ]; then
-    echo "   Downloading pgvector..."
-    git clone --branch v0.7.0 https://github.com/pgvector/pgvector.git /tmp/pgvector
-fi
+rm -rf /tmp/pgvector
+echo "   Downloading pgvector..."
+git clone --branch v0.7.0 https://github.com/pgvector/pgvector.git /tmp/pgvector
 
 cd /tmp/pgvector
 export PATH="/opt/homebrew/opt/postgresql@17/bin:$PATH"
