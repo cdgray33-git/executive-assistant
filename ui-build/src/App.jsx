@@ -209,6 +209,14 @@ function App() {
       const data = await res.json()
       if (data.status === "success") {
         startOrganizationPolling(accountId)
+        // Auto-open progress modal
+        const account = accounts.find(acc => acc.account_id === accountId)
+        if (account) {
+          setSelectedOrganization({
+            account: account,
+            progress: { status: "running", processed_count: 0, total_emails: data.total_emails || 0 }
+          })
+        }
       }
     } catch (err) {
       console.error("Failed to start organization:", err)
