@@ -4,6 +4,8 @@ Location: server/app.py (REPLACE EXISTING)
 """
 import os
 import logging
+from logging.handlers import RotatingFileHandler
+import os
 import json
 from pathlib import Path
 from typing import Optional, Any, Dict, List
@@ -45,6 +47,18 @@ from server.managers.account_manager import AccountManager
 
 logger = logging.getLogger("executive_assistant")
 logging.basicConfig(level=logging.INFO)
+
+# Setup file logging for debugging
+os.makedirs("logs", exist_ok=True)
+file_handler = RotatingFileHandler(
+    "logs/jarvis.log",
+    maxBytes=10*1024*1024,  # 10MB
+    backupCount=5
+)
+file_handler.setFormatter(logging.Formatter(
+    "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+))
+logging.getLogger().addHandler(file_handler)
 
 app = FastAPI(title="Executive Assistant API (native mac)")
 

@@ -115,11 +115,14 @@ class MailboxOrganizer:
             logger.info(f"Ensuring folders exist for {account_id}...")
             folder_result = self.email_mgr.ensure_folders_exist(account_id)
             
+            # Get total email count (capped at batch_size, max 3000)
             try:
-                total_emails = len(connector.preview_emails(count=999999, oldest_first=True))
-            except:
-                total_emails = 10000
-            
+                safe_limit = min(batch_size, 3000)
+                emails = connector.preview_emails(count=safe_limit, oldest_first=True)
+                total_emails = len(emails)
+            except Exception as e:
+                logger.warning(f"Could not get exact count: {e}")
+                total_emails = batch_size
             connector.disconnect()
             
             with get_db_session() as session:
