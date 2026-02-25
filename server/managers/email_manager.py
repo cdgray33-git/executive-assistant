@@ -134,7 +134,7 @@ Preview: {email.get('body', '')[:200]}
 Respond with ONLY the category name, nothing else."""
         
         try:
-            response = self.ollama.generate(prompt, model="qwen2.5:7b-instruct")
+            response = self.ollama.generate("qwen2.5:7b-instruct", prompt)
             category = response.strip()
             
             # Validate category
