@@ -767,6 +767,20 @@ Write a clear, professional email. Include appropriate greeting and closing."""
                     except Exception as e:
                         logger.error(f"Failed to categorize email: {e}")
                         email["auto_category"] = "Inbox"
+
+                # Move categorized emails to their folders
+                for email in keep_emails:
+                    category = email.get("auto_category")
+                    if category and category != "Inbox":
+                        try:
+                            acc_id = email.get("account_id")
+                            if acc_id in connectors:
+                                connector = connectors[acc_id]
+                                if hasattr(connector, 'move_to_folder'):
+                                    connector.move_to_folder([email["id"]], category)
+                                    logger.info(f"📂 Moved to {category}: {email.get('subject', 'No subject')[:50]}")
+                        except Exception as e:
+                            logger.error(f"Failed to move email to {category}: {e}")
             
             self._cleanup_connectors(connectors)
             
