@@ -3,3 +3,4 @@ sqlalchemy==2.0.23
 pgvector==0.2.4
 alembic==1.13.1
 python-dateutil==2.8.2
+keyring>=23.0.0
