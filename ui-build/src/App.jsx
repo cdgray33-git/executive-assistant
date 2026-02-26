@@ -211,6 +211,7 @@ function App() {
         startOrganizationPolling(accountId)
         // Auto-open progress modal
         const account = accounts.find(acc => acc.account_id === accountId)
+        console.log("🔍 Modal auto-open:", { accountId, account, accountsLength: accounts.length })
         if (account) {
           setSelectedOrganization({
             account: account,
