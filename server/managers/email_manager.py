@@ -737,6 +737,7 @@ Write a clear, professional email. Include appropriate greeting and closing."""
                             continue
                         
                         spam_ids = [e['id'] for e in spam_list]
+                        logger.debug(f"Spam IDs to delete: {spam_ids[:3]}...")  # Show first 3
                         logger.info(f"🗑️  Deleting {len(spam_ids)} spam from {acc_id}...")
                         
                         result = connector.delete_emails(spam_ids, permanent=False)

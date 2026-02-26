@@ -169,6 +169,7 @@ class YahooConnector:
         permanent=False: Move to Trash folder (reversible)
         permanent=True: Flag as deleted and expunge (permanent)
         """
+        logger.info(f"delete_emails called with {len(email_ids)} IDs: {email_ids[:2] if len(email_ids) >= 2 else email_ids}...")
         if not self.imap:
             return {"success": False, "error": "Not connected"}
 
