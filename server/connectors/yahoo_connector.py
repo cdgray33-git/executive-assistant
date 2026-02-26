@@ -102,11 +102,7 @@ class YahooConnector:
             for msg_id in target_ids:
                 try:
                     # Fetch headers + size
-                    status, data = self.imap.fetch(
-                        msg_id, 
-                        "(RFC822.SIZE BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])"
-                    )
-                    
+                    status, data = self.imap.uid("fetch", msg_id, "(RFC822.SIZE BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])")
                     if status != "OK":
                         continue
                     
