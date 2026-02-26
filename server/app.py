@@ -72,6 +72,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.on_event("startup")
+async def startup_cleanup():
+    """Clear stuck organization records on server start"""
+    from server.database.connection import get_db_session
+    from sqlalchemy import text
+    try:
+        with get_db_session() as session:
+            result = session.execute(text("""
+                UPDATE email_organization_progress 
+                SET status = 'error', last_error = 'Server restarted'
+                WHERE status = 'running' 
+                AND last_update < NOW() - INTERVAL '1 hour'
+            """))
+            if result.rowcount > 0:
+                logger.info(f"Cleaned up {result.rowcount} stuck organization record(s)")
+    except Exception as e:
+        logger.error(f"Startup cleanup failed: {e}")
 # Service instances
 ollama = OllamaAdapter()
 spam_detector = SpamDetector()
