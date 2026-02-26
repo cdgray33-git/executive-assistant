@@ -377,6 +377,7 @@ async def delete_emails(request: DeleteRequest):
 
 
 async def run_organization_loop(user_id: str, account_id: str):
+    logger.info(f"🔄 Organization loop STARTED for {account_id}")
     """Background task to process organization batches"""
     from server.managers.mailbox_organizer import MailboxOrganizer
     import asyncio
@@ -385,6 +386,7 @@ async def run_organization_loop(user_id: str, account_id: str):
     
     while True:
         try:
+            logger.info(f"🔄 Loop iteration for {account_id}, status check...")
             # Check if still running
             status = organizer.get_progress(user_id, account_id)
             if status.get("status") not in ["running"]:
