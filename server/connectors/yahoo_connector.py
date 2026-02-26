@@ -86,7 +86,7 @@ class YahooConnector:
                 return []
             
             # Search all messages
-            status, msg_ids = self.imap.search(None, "ALL")
+            status, msg_ids = self.imap.uid("search", None, "ALL")
             if status != "OK" or not msg_ids[0]:
                 return []
             
@@ -182,7 +182,7 @@ class YahooConnector:
                 self.imap.select("INBOX")
                 for email_id in email_ids:
                     try:
-                        status, _ = self.imap.store(email_id.encode(), '+FLAGS', '\\Deleted')
+                        status, _ = self.imap.uid("store", email_id.encode(), '+FLAGS', '\\Deleted')
                         if status == "OK":
                             success_count += 1
                         else:
@@ -201,11 +201,11 @@ class YahooConnector:
                 for email_id in email_ids:
                     try:
                         # Copy to Trash folder
-                        status, _ = self.imap.copy(email_id.encode(), 'Trash')
+                        status, _ = self.imap.uid("copy", email_id.encode(), 'Trash')
                         
                         if status == "OK":
                             # Now delete from INBOX
-                            self.imap.store(email_id.encode(), '+FLAGS', '\\Deleted')
+                            self.imap.uid("store", email_id.encode(), '+FLAGS', '\\Deleted')
                             success_count += 1
                         else:
                             failed_ids.append(email_id)
@@ -226,6 +226,47 @@ class YahooConnector:
 
         except Exception as e:
             logger.error(f"Delete operation failed: {e}")
+            return {"success": False, "error": str(e)}
+
+    def move_to_folder(self, email_ids: List[str], folder_name: str) -> Dict:
+        """
+        Move emails to a folder using UID
+        """
+        if not self.imap:
+            return {"success": False, "error": "Not connected"}
+
+        try:
+            self.imap.select("INBOX")
+            success_count = 0
+            failed_ids = []
+
+            for email_id in email_ids:
+                try:
+                    # Copy to destination folder
+                    status, _ = self.imap.uid("copy", email_id.encode(), folder_name)
+                    if status == "OK":
+                        # Mark as deleted in INBOX
+                        self.imap.uid("store", email_id.encode(), '+FLAGS', '\\Deleted')
+                        success_count += 1
+                    else:
+                        failed_ids.append(email_id)
+                except Exception as e:
+                    logger.error(f"Failed to move {email_id} to {folder_name}: {e}")
+                    failed_ids.append(email_id)
+
+            # Expunge to remove from INBOX
+            if success_count > 0:
+                self.imap.expunge()
+
+            return {
+                "success": True,
+                "moved_count": success_count,
+                "failed_count": len(failed_ids),
+                "failed_ids": failed_ids
+            }
+
+        except Exception as e:
+            logger.error(f"Move operation failed: {e}")
             return {"success": False, "error": str(e)}
 
     def send_message(
