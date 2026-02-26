@@ -716,6 +716,18 @@ Write a clear, professional email. Include appropriate greeting and closing."""
             unsure_emails = [e for e in categorized if e.get("category") == "unsure"]
             
             logger.info(f"🎯 Results: {len(spam_emails)} spam, {len(keep_emails)} keep, {len(unsure_emails)} unsure")
+
+            # Update progress in DB if this is part of organization
+            if kwargs.get('update_progress_callback'):
+                try:
+                    kwargs['update_progress_callback']({
+                        'processed_count': len(emails_to_check),
+                        'spam_count': len(spam_emails),
+                        'keep_count': len(keep_emails),
+                        'unsure_count': len(unsure_emails)
+                    })
+                except Exception as e:
+                    logger.error(f"Progress update failed: {e}")
             
             # Delete spam
             trashed_count = 0

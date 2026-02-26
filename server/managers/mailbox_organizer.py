@@ -252,10 +252,15 @@ class MailboxOrganizer:
             
             batch_size = progress['batch_size']
             
+            # Define progress callback
+            def update_progress(counts):
+                self._update_progress(user_id, account_id, counts)
+            
             result = self.email_mgr.cleanup_spam_safe(
                 account_id=account_id,
                 max_emails=batch_size,
-                auto_categorize=True
+                auto_categorize=True,
+                update_progress_callback=update_progress
             )
             
             if result.get('status') != 'success':
