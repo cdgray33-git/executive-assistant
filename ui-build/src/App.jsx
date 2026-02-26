@@ -201,6 +201,16 @@ function App() {
   // Organization functions
   const handleStartOrganization = async (accountId, batchSize = 3000) => {
     setOrganizingAccount(accountId)
+    
+    // Open modal immediately
+    const account = accounts.find(acc => acc.account_id === accountId)
+    if (account) {
+      setSelectedOrganization({
+        account: account,
+        progress: { status: "starting", processed_count: 0, total_emails: 0 }
+      })
+    }
+    
     try {
       const res = await fetch(`${API_BASE}/api/email/organize/start?account_id=${accountId}&batch_size=${batchSize}`, {
         method: "POST",
@@ -209,9 +219,7 @@ function App() {
       const data = await res.json()
       if (data.status === "success") {
         startOrganizationPolling(accountId)
-        // Auto-open progress modal
-        const account = accounts.find(acc => acc.account_id === accountId)
-        console.log("🔍 Modal auto-open:", { accountId, account, accountsLength: accounts.length })
+        // Update modal with real total
         if (account) {
           setSelectedOrganization({
             account: account,
@@ -221,6 +229,7 @@ function App() {
       }
     } catch (err) {
       console.error("Failed to start organization:", err)
+      setSelectedOrganization(null)  // Close modal on error
     } finally {
       setOrganizingAccount(null)
     }
