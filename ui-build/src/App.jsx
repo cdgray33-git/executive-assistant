@@ -252,6 +252,15 @@ function App() {
       
       if (accountId) {
         setOrganizationProgress(prev => ({ ...prev, [accountId]: data }))
+        
+        // Update modal if it's open for this account
+        if (selectedOrganization?.account?.account_id === accountId) {
+          setSelectedOrganization({
+            account: selectedOrganization.account,
+            progress: data
+          })
+        }
+        
         if (data.status === "completed" || data.status === "cancelled") {
           clearInterval(organizationPollInterval)
         }

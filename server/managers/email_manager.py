@@ -719,6 +719,7 @@ Write a clear, professional email. Include appropriate greeting and closing."""
 
             # Update progress in DB if this is part of organization
             if kwargs.get('update_progress_callback'):
+                logger.info(f"📊 Calling progress callback with counts: {len(emails_to_check)} processed")
                 try:
                     kwargs['update_progress_callback']({
                         'processed_count': len(emails_to_check),
