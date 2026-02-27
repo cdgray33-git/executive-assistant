@@ -710,6 +710,7 @@ Write a clear, professional email. Include appropriate greeting and closing."""
             # Define incremental progress callback
             def spam_progress(counts):
                 if kwargs.get('update_progress_callback'):
+                    logger.info(f"📞 spam_progress called: {counts}")
                     kwargs['update_progress_callback']({
                         'processed_count': counts['current'],
                         'total_emails': counts['total'],
