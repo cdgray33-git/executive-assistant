@@ -86,6 +86,7 @@ class SpamDetector:
                 # Report progress if callback provided
                 if progress_callback:
                     done = len(results)
+                    logger.info(f"🔔 Callback firing: {done}/{total}")
                     progress_callback({"current": done, "total": total})
             
             # Progress logging
