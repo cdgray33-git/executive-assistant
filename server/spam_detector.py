@@ -66,7 +66,7 @@ class SpamDetector:
             }
     
     def batch_categorize(self, emails: List[Dict], 
-                         batch_size: int = 10) -> List[Dict]:
+                         batch_size: int = 10, progress_callback=None) -> List[Dict]:
         """
         Categorize multiple emails in batches
         Shows progress for large batches
@@ -82,6 +82,11 @@ class SpamDetector:
             for email in batch:
                 result = self.categorize_email(email)
                 results.append(result)
+
+                # Report progress if callback provided
+                if progress_callback:
+                    done = len(results)
+                    progress_callback({"current": done, "total": total})
             
             # Progress logging
             done = min(i + batch_size, total)

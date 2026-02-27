@@ -707,8 +707,17 @@ Write a clear, professional email. Include appropriate greeting and closing."""
             
             # AI Detection - returns spam/keep/unsure
             logger.info(f"🤖 AI detection on {len(emails_to_check)} emails...")
+            # Define incremental progress callback
+            def spam_progress(counts):
+                if kwargs.get('update_progress_callback'):
+                    kwargs['update_progress_callback']({
+                        'processed_count': counts['current'],
+                        'total_emails': counts['total'],
+                        'status': 'detecting_spam'
+                    })
+            
             detector = SpamDetector()
-            categorized = detector.batch_categorize(emails_to_check)
+            categorized = detector.batch_categorize(emails_to_check, progress_callback=spam_progress)
             
             # Separate into 3 categories
             spam_emails = [e for e in categorized if e.get("category") == "spam"]
