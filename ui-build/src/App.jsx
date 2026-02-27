@@ -249,6 +249,7 @@ function App() {
         : `${API_BASE}/api/email/organize/status`
       const res = await fetch(endpoint, { headers: { "X-API-Key": localStorage.getItem("api_key") || "dev-key-12345" } })
       const data = await res.json()
+      console.log("📡 Poll response:", data);
       
       if (accountId) {
         setOrganizationProgress(prev => ({ ...prev, [accountId]: data }))
