@@ -714,7 +714,6 @@ Write a clear, professional email. Include appropriate greeting and closing."""
                     kwargs['update_progress_callback']({
                         'processed_count': counts['current'],
                         'total_emails': counts['total'],
-                        'status': 'detecting_spam'
                     })
             
             detector = SpamDetector()
