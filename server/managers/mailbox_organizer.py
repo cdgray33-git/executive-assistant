@@ -337,6 +337,7 @@ class MailboxOrganizer:
             
             with get_db_session() as session:
                 session.execute(text(query), params)
+                session.commit()
         except Exception as e:
             logger.error(f"Error updating progress: {e}")
     
