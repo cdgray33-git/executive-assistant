@@ -323,6 +323,7 @@ class MailboxOrganizer:
     
     def _update_progress(self, user_id: str, account_id: str, updates: Dict) -> None:
         """Update progress in database"""
+        logger.info(f"🔄 _update_progress CALLED with: {list(updates.keys())}")
         try:
             set_clauses = []
             params = {"user_id": user_id, "account_id": account_id}
