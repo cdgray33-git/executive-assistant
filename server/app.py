@@ -394,7 +394,7 @@ async def run_organization_loop(user_id: str, account_id: str):
                 break
             
             # Process next batch
-            result = organizer.process_batch(user_id, account_id)
+            result = await organizer.process_batch(user_id, account_id)
             
             if result.get("status") == "completed":
                 logger.info(f"Organization completed for {account_id}")

@@ -1,4 +1,5 @@
 """
+import asyncio
 Mailbox Organization Manager
 Handles batch processing of email backlogs with pause/resume capability
 """
@@ -242,13 +243,13 @@ class MailboxOrganizer:
             logger.error(f"Error retrying: {e}")
             return {"status": "error", "message": str(e)}
     
-    def process_batch(self, user_id: str, account_id: str) -> Dict[str, Any]:
+    async def process_batch(self, user_id: str, account_id: str) -> Dict[str, Any]:
         """Process single batch of emails (called by background task)"""
         try:
             if self._check_pause_flag(user_id, account_id):
                 return {"status": "paused", "message": "Organization paused by user"}
             
-            progress = self.get_progress(user_id, account_id)
+            progress = await asyncio.to_thread(self.get_progress,user_id, account_id)
             if not progress or progress['status'] != 'running':
                 return {"status": "error", "message": "Not in running state"}
             
@@ -258,7 +259,7 @@ class MailboxOrganizer:
             def update_progress(counts):
                 self._update_progress(user_id, account_id, counts)
 
-            result = self.email_mgr.cleanup_spam_safe(
+            result = await asyncio.to_thread(self.email_mgr.cleanup_spam_safe,
                 account_id=account_id,
                 max_emails=batch_size,
                 auto_categorize=True,
@@ -273,7 +274,7 @@ class MailboxOrganizer:
                 return result
 
             # Callbacks already updated counts - just check completion
-            current_progress = self.get_progress(user_id, account_id)
+            current_progress = await asyncio.to_thread(self.get_progress,user_id, account_id)
             if current_progress['processed_count'] >= current_progress['total_emails']:
                 self._update_progress(user_id, account_id, {
                     'status': 'completed',
