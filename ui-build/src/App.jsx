@@ -209,8 +209,9 @@ function App() {
         account: account,
         progress: { status: "starting", processed_count: 0, total_emails: 0 }
       })
+      startOrganizationPolling(accountId)  // Start polling immediately
     }
-    
+
     try {
       const res = await fetch(`${API_BASE}/api/email/organize/start?account_id=${accountId}&batch_size=${batchSize}`, {
         method: "POST",
@@ -218,7 +219,7 @@ function App() {
       })
       const data = await res.json()
       if (data.status === "success") {
-        startOrganizationPolling(accountId)
+        // Polling already started - just update total
         // Update modal with real total
         if (account) {
           setSelectedOrganization({
@@ -249,7 +250,7 @@ function App() {
         : `${API_BASE}/api/email/organize/status`
       const res = await fetch(endpoint, { headers: { "X-API-Key": localStorage.getItem("api_key") || "dev-key-12345" } })
       const data = await res.json()
-      console.log("📡 Poll response:", data);
+      console.log("📡 Poll response [" + new Date().toLocaleTimeString() + "]:", data);
       
       if (accountId) {
         setOrganizationProgress(prev => ({ ...prev, [accountId]: data }))
