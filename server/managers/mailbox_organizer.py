@@ -257,48 +257,35 @@ class MailboxOrganizer:
             # Define progress callback
             def update_progress(counts):
                 self._update_progress(user_id, account_id, counts)
-            
+
             result = self.email_mgr.cleanup_spam_safe(
                 account_id=account_id,
                 max_emails=batch_size,
                 auto_categorize=True,
                 update_progress_callback=update_progress
             )
-            
+
             if result.get('status') != 'success':
                 self._update_progress(user_id, account_id, {
                     'status': 'error',
                     'last_error': result.get('message', 'Unknown error')
                 })
                 return result
-            
-            updates = {
-                'processed_count': progress['processed_count'] + result.get('total_checked', 0),
-                'spam_count': progress['spam_count'] + result.get('spam_count', 0),
-                'keep_count': progress['keep_count'] + result.get('keep_count', 0),
-                'unsure_count': progress['unsure_count'] + result.get('unsure_count', 0),
-                'moved_count': progress['moved_count'] + result.get('categorized_count', 0),
-                'current_batch': progress.get('current_batch', 0) + 1
-            }
-            
-            if updates['processed_count'] > 0:
-                time_elapsed = (datetime.now() - datetime.fromisoformat(progress['started_at'])).total_seconds()
-                rate = updates['processed_count'] / time_elapsed
-                remaining = progress['total_emails'] - updates['processed_count']
-                eta_seconds = remaining / rate if rate > 0 else 0
-                updates['estimated_completion'] = datetime.now() + timedelta(seconds=eta_seconds)
-            
-            if updates['processed_count'] >= progress['total_emails']:
-                updates['status'] = 'completed'
-                updates['completed_at'] = datetime.now()
-            
-            self._update_progress(user_id, account_id, updates)
-            
+
+            # Callbacks already updated counts - just check completion
+            current_progress = self.get_progress(user_id, account_id)
+            if current_progress['processed_count'] >= current_progress['total_emails']:
+                self._update_progress(user_id, account_id, {
+                    'status': 'completed',
+                    'completed_at': datetime.now()
+                })
+
+
             return {
                 "status": "success",
                 "processed_this_batch": result.get('total_checked', 0),
-                "total_processed": updates['processed_count'],
-                "is_complete": updates.get('status') == 'completed'
+                "total_processed": current_progress['processed_count'],
+                "is_complete": current_progress.get('status') == 'completed'
             }
         except Exception as e:
             logger.error(f"Error processing batch: {e}", exc_info=True)
