@@ -787,11 +787,17 @@ Write a clear, professional email. Include appropriate greeting and closing."""
                         category = self._categorize_email(email)
                         email["auto_category"] = category
                         categorized_count += 1
+                        # Report categorization progress
+                        if kwargs.get("update_progress_callback"):
+                            kwargs["update_progress_callback"]({
+                                "processed_count": len(emails_to_check),
+                                "categorizing_count": categorized_count,
+                                "categorizing_total": len(keep_emails)
+                            })
                     except Exception as e:
                         logger.error(f"Failed to categorize email: {e}")
                         email["auto_category"] = "Inbox"
 
-                # Move categorized emails to their folders
                 for email in keep_emails:
                     category = email.get("auto_category")
                     if category and category != "Inbox":
