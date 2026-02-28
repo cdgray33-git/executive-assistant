@@ -1,15 +1,15 @@
 #!/bin/bash
-# Run database migration for Phase 2
+# Run all database migrations
 
-MIGRATION_FILE="server/database/migrations/001_meeting_responses.sql"
+MIGRATION_DIR="server/database/migrations"
 
 echo "╔════════════════════════════════════════════════════════════╗"
-echo "║          RUNNING DATABASE MIGRATION                        ║"
+echo "║          RUNNING DATABASE MIGRATIONS                       ║"
 echo "╚════════════════════════════════════════════════════════════╝"
 echo ""
 
-if [ ! -f "$MIGRATION_FILE" ]; then
-    echo "❌ Migration file not found: $MIGRATION_FILE"
+if [ ! -d "$MIGRATION_DIR" ]; then
+    echo "❌ Migration directory not found: $MIGRATION_DIR"
     exit 1
 fi
 
@@ -30,23 +30,20 @@ echo "Host: $DB_HOST:$DB_PORT"
 echo "User: $DB_USER"
 echo ""
 
-# Run migration
-echo "Running migration..."
-PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -f "$MIGRATION_FILE"
+# Run all migrations in order
+for MIGRATION_FILE in $(ls -1 $MIGRATION_DIR/*.sql | sort); do
+    MIGRATION_NAME=$(basename "$MIGRATION_FILE")
+    echo "Running $MIGRATION_NAME..."
+    
+    PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -f "$MIGRATION_FILE"
+    
+    if [ $? -eq 0 ]; then
+        echo "✅ $MIGRATION_NAME completed"
+    else
+        echo "❌ $MIGRATION_NAME failed!"
+        exit 1
+    fi
+    echo ""
+done
 
-if [ $? -eq 0 ]; then
-    echo ""
-    echo "✅ Migration completed successfully!"
-    echo ""
-    echo "New tables/columns added:"
-    echo "  • meetings.response_status"
-    echo "  • meetings.attendee_responses"
-    echo "  • meetings.message_id"
-    echo "  • meetings.last_checked"
-    echo "  • meetings.ics_uid"
-    echo "  • calendar_blocks (new table)"
-else
-    echo ""
-    echo "❌ Migration failed!"
-    exit 1
-fi
+echo "✅ All migrations completed successfully!"
