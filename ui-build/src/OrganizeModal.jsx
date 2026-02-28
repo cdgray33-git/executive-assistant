@@ -45,6 +45,11 @@ export default function OrganizeModal({ account, progress, onPause, onCancel, on
                 {progress.processed_count?.toLocaleString()} / {progress.total_emails?.toLocaleString()} emails
                 <span className="text-gray-500 ml-2">({progressPercent.toFixed(1)}%)</span>
               </div>
+              {progress.categorizing_total > 0 && (
+                <div className="mt-2 text-center text-xs text-gray-600">
+                  Categorizing: {progress.categorizing_count} / {progress.categorizing_total}
+                </div>
+              )}
             </>
           )}
 

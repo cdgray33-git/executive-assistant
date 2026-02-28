@@ -50,6 +50,8 @@ class MailboxOrganizer:
                     "moved_count": row.moved_count,
                     "error_count": row.error_count,
                     "batch_size": row.batch_size,
+                    "categorizing_count": row.categorizing_count,
+                    "categorizing_total": row.categorizing_total,
                     "started_at": row.started_at.isoformat() if row.started_at else None,
                     "estimated_completion": row.estimated_completion.isoformat() if row.estimated_completion else None,
                     "last_error": row.last_error,
