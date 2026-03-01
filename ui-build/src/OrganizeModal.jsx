@@ -3,6 +3,7 @@ import { X, AlertCircle, CheckCircle, Loader, Pause, XCircle } from 'lucide-reac
 
 export default function OrganizeModal({ account, progress, onPause, onCancel, onRetry, onClose }) {
   if (!progress) return null;
+  console.log("🎨 OrganizeModal rendered with progress:", progress);
 
   const progressPercent = progress.progress_percent || 0;
   const isRunning = progress.status === 'running';
