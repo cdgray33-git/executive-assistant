@@ -741,6 +741,7 @@ function App() {
         {/* Organization Progress Modal */}
         {selectedOrganization && (
           <OrganizeModal
+            key={`${selectedOrganization.account.account_id}-${selectedOrganization.progress.processed_count}-${selectedOrganization.progress.status}`}
             account={selectedOrganization.account}
             progress={selectedOrganization.progress}
             onPause={() => handlePauseOrganization(selectedOrganization.account.account_id)}
