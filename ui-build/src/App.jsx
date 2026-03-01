@@ -203,15 +203,7 @@ function App() {
     setOrganizingAccount(accountId)
     
     // Open modal immediately
-    const account = accounts.find(acc => acc.account_id === accountId)
-    if (account) {
-      setSelectedOrganization({
-        account: account,
-        progress: { status: "starting", processed_count: 0, total_emails: 0 }
-      })
-      startOrganizationPolling(accountId)  // Start polling immediately
-    }
-
+    startOrganizationPolling(accountId)  // Start polling immediately
     try {
       const res = await fetch(`${API_BASE}/api/email/organize/start?account_id=${accountId}&batch_size=${batchSize}`, {
         method: "POST",
@@ -732,7 +724,7 @@ function App() {
         {selectedOrganization && (
           <OrganizeModal
             account={selectedOrganization.account}
-            progress={selectedOrganization.progress}
+            progress={organizationProgress[selectedOrganization.account.account_id] || selectedOrganization.progress}
             onPause={() => handlePauseOrganization(selectedOrganization.account.account_id)}
             onCancel={() => handleCancelOrganization(selectedOrganization.account.account_id)}
             onRetry={() => handleRetryOrganization(selectedOrganization.account.account_id)}
