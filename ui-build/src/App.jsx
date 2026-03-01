@@ -218,16 +218,6 @@ function App() {
         headers: { "X-API-Key": localStorage.getItem("api_key") || "dev-key-12345" }
       })
       const data = await res.json()
-      if (data.status === "success") {
-        // Polling already started - just update total
-        // Update modal with real total
-        if (account) {
-          setSelectedOrganization({
-            account: account,
-            progress: { status: "running", processed_count: 0, total_emails: data.total_emails || 0 }
-          })
-        }
-      }
     } catch (err) {
       console.error("Failed to start organization:", err)
       setSelectedOrganization(null)  // Close modal on error
