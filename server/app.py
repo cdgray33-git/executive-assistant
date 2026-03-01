@@ -48,17 +48,17 @@ from server.managers.account_manager import AccountManager
 logger = logging.getLogger("executive_assistant")
 logging.basicConfig(level=logging.INFO)
 
-# Setup file logging for debugging
-os.makedirs("logs", exist_ok=True)
-file_handler = RotatingFileHandler(
-    "logs/jarvis.log",
-    maxBytes=10*1024*1024,  # 10MB
-    backupCount=5
-)
-file_handler.setFormatter(logging.Formatter(
-    "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-))
-logging.getLogger().addHandler(file_handler)
+# # Setup file logging for debugging
+# os.makedirs("logs", exist_ok=True)
+# file_handler = RotatingFileHandler(
+#     "logs/jarvis.log",
+#     maxBytes=10*1024*1024,  # 10MB
+#     backupCount=5
+# )
+# file_handler.setFormatter(logging.Formatter(
+#     "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+# ))
+# logging.getLogger().addHandler(file_handler)
 
 app = FastAPI(title="Executive Assistant API (native mac)")
 
@@ -384,13 +384,43 @@ async def run_organization_loop(user_id: str, account_id: str):
     
     organizer = MailboxOrganizer()
     
+    # Clean up any stuck records for this account
+    logger.info(f"🧹 Checking for stuck organization records for {account_id}...")
+    try:
+        from server.database.connection import get_db_session
+        from sqlalchemy import text
+        with get_db_session() as session:
+            result = session.execute(
+                text("""
+                    UPDATE email_organization_progress 
+                    SET status = 'cancelled', completed_at = NOW() 
+                    WHERE account_id = :account_id 
+                    AND status IN ('running', 'starting') 
+                    AND user_id = :user_id
+                """),
+                {"account_id": account_id, "user_id": user_id}
+            )
+            session.commit()
+            if result.rowcount > 0:
+                logger.info(f"✅ Cancelled {result.rowcount} stuck record(s) for {account_id}")
+    except Exception as e:
+        logger.warning(f"Cleanup failed (non-critical): {e}")
+    
     while True:
         try:
             logger.info(f"🔄 Loop iteration for {account_id}, status check...")
             # Check if still running
             status = organizer.get_progress(user_id, account_id)
+            logger.info(f"🔄 Loop iteration for {account_id}, status: {status.get("status")}, {status.get("processed_count")}/{status.get("total_emails")}")
+            
+            # Exit if completed, cancelled, error, or fully processed
             if status.get("status") not in ["running"]:
-                logger.info(f"Organization stopped for {account_id}")
+                logger.info(f"Organization stopped for {account_id} - status: {status.get("status")}")
+                break
+            
+            if status.get("processed_count", 0) >= status.get("total_emails", 0) and status.get("total_emails", 0) > 0:
+                logger.info(f"Organization auto-completed for {account_id} - all emails processed")
+                organizer._update_progress(user_id, account_id, {"status": "completed", "completed_at": datetime.now()})
                 break
             
             # Process next batch
@@ -413,6 +443,28 @@ async def start_organization(background_tasks: BackgroundTasks, account_id: str,
     """Start mailbox organization for an account"""
     from server.managers.mailbox_organizer import MailboxOrganizer
     organizer = MailboxOrganizer()
+    
+    # Clean up any stuck records for this account
+    logger.info(f"🧹 Checking for stuck organization records for {account_id}...")
+    try:
+        from server.database.connection import get_db_session
+        from sqlalchemy import text
+        with get_db_session() as session:
+            result = session.execute(
+                text("""
+                    UPDATE email_organization_progress 
+                    SET status = 'cancelled', completed_at = NOW() 
+                    WHERE account_id = :account_id 
+                    AND status IN ('running', 'starting') 
+                    AND user_id = :user_id
+                """),
+                {"account_id": account_id, "user_id": user_id}
+            )
+            session.commit()
+            if result.rowcount > 0:
+                logger.info(f"✅ Cancelled {result.rowcount} stuck record(s) for {account_id}")
+    except Exception as e:
+        logger.warning(f"Cleanup failed (non-critical): {e}")
     result = organizer.start_organization(user_id, account_id, batch_size)
     if result.get("status") == "success":
         background_tasks.add_task(run_organization_loop, user_id, account_id)
@@ -424,6 +476,28 @@ async def pause_organization(account_id: str, user_id: str = "default_user"):
     """Pause ongoing organization"""
     from server.managers.mailbox_organizer import MailboxOrganizer
     organizer = MailboxOrganizer()
+    
+    # Clean up any stuck records for this account
+    logger.info(f"🧹 Checking for stuck organization records for {account_id}...")
+    try:
+        from server.database.connection import get_db_session
+        from sqlalchemy import text
+        with get_db_session() as session:
+            result = session.execute(
+                text("""
+                    UPDATE email_organization_progress 
+                    SET status = 'cancelled', completed_at = NOW() 
+                    WHERE account_id = :account_id 
+                    AND status IN ('running', 'starting') 
+                    AND user_id = :user_id
+                """),
+                {"account_id": account_id, "user_id": user_id}
+            )
+            session.commit()
+            if result.rowcount > 0:
+                logger.info(f"✅ Cancelled {result.rowcount} stuck record(s) for {account_id}")
+    except Exception as e:
+        logger.warning(f"Cleanup failed (non-critical): {e}")
     return organizer.pause_organization(user_id, account_id)
 
 
@@ -432,6 +506,28 @@ async def cancel_organization(account_id: str, user_id: str = "default_user"):
     """Cancel organization (not resumable)"""
     from server.managers.mailbox_organizer import MailboxOrganizer
     organizer = MailboxOrganizer()
+    
+    # Clean up any stuck records for this account
+    logger.info(f"🧹 Checking for stuck organization records for {account_id}...")
+    try:
+        from server.database.connection import get_db_session
+        from sqlalchemy import text
+        with get_db_session() as session:
+            result = session.execute(
+                text("""
+                    UPDATE email_organization_progress 
+                    SET status = 'cancelled', completed_at = NOW() 
+                    WHERE account_id = :account_id 
+                    AND status IN ('running', 'starting') 
+                    AND user_id = :user_id
+                """),
+                {"account_id": account_id, "user_id": user_id}
+            )
+            session.commit()
+            if result.rowcount > 0:
+                logger.info(f"✅ Cancelled {result.rowcount} stuck record(s) for {account_id}")
+    except Exception as e:
+        logger.warning(f"Cleanup failed (non-critical): {e}")
     return organizer.cancel_organization(user_id, account_id)
 
 
@@ -440,6 +536,28 @@ async def retry_organization(account_id: str, user_id: str = "default_user"):
     """Retry organization after error"""
     from server.managers.mailbox_organizer import MailboxOrganizer
     organizer = MailboxOrganizer()
+    
+    # Clean up any stuck records for this account
+    logger.info(f"🧹 Checking for stuck organization records for {account_id}...")
+    try:
+        from server.database.connection import get_db_session
+        from sqlalchemy import text
+        with get_db_session() as session:
+            result = session.execute(
+                text("""
+                    UPDATE email_organization_progress 
+                    SET status = 'cancelled', completed_at = NOW() 
+                    WHERE account_id = :account_id 
+                    AND status IN ('running', 'starting') 
+                    AND user_id = :user_id
+                """),
+                {"account_id": account_id, "user_id": user_id}
+            )
+            session.commit()
+            if result.rowcount > 0:
+                logger.info(f"✅ Cancelled {result.rowcount} stuck record(s) for {account_id}")
+    except Exception as e:
+        logger.warning(f"Cleanup failed (non-critical): {e}")
     return organizer.retry_organization(user_id, account_id)
 
 
@@ -448,6 +566,28 @@ async def get_organization_status(account_id: str, user_id: str = "default_user"
     """Get organization progress for specific account"""
     from server.managers.mailbox_organizer import MailboxOrganizer
     organizer = MailboxOrganizer()
+    
+    # Clean up any stuck records for this account
+    logger.info(f"🧹 Checking for stuck organization records for {account_id}...")
+    try:
+        from server.database.connection import get_db_session
+        from sqlalchemy import text
+        with get_db_session() as session:
+            result = session.execute(
+                text("""
+                    UPDATE email_organization_progress 
+                    SET status = 'cancelled', completed_at = NOW() 
+                    WHERE account_id = :account_id 
+                    AND status IN ('running', 'starting') 
+                    AND user_id = :user_id
+                """),
+                {"account_id": account_id, "user_id": user_id}
+            )
+            session.commit()
+            if result.rowcount > 0:
+                logger.info(f"✅ Cancelled {result.rowcount} stuck record(s) for {account_id}")
+    except Exception as e:
+        logger.warning(f"Cleanup failed (non-critical): {e}")
     progress = organizer.get_progress(user_id, account_id)
     if not progress:
         return {"status": "not_started", "message": "No organization in progress"}
@@ -459,6 +599,28 @@ async def get_all_organization_status(user_id: str = "default_user"):
     """Get organization status for all accounts"""
     from server.managers.mailbox_organizer import MailboxOrganizer
     organizer = MailboxOrganizer()
+    
+    # Clean up any stuck records for this account
+    logger.info(f"🧹 Checking for stuck organization records for {account_id}...")
+    try:
+        from server.database.connection import get_db_session
+        from sqlalchemy import text
+        with get_db_session() as session:
+            result = session.execute(
+                text("""
+                    UPDATE email_organization_progress 
+                    SET status = 'cancelled', completed_at = NOW() 
+                    WHERE account_id = :account_id 
+                    AND status IN ('running', 'starting') 
+                    AND user_id = :user_id
+                """),
+                {"account_id": account_id, "user_id": user_id}
+            )
+            session.commit()
+            if result.rowcount > 0:
+                logger.info(f"✅ Cancelled {result.rowcount} stuck record(s) for {account_id}")
+    except Exception as e:
+        logger.warning(f"Cleanup failed (non-critical): {e}")
     return {"accounts": organizer.get_all_progress(user_id)}
 
 async def get_email_stats(account_id: str):

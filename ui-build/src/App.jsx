@@ -31,6 +31,15 @@ function App() {
     loadData()
   }, [])
 
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (organizationPollInterval) {
+        clearInterval(organizationPollInterval)
+      }
+    }
+  }, [organizationPollInterval])
+
   const loadData = () => {
     fetch('/health').then(r => r.json()).then(setHealth).catch(() => {})
     fetch('/api/functions').then(r => r.json()).then(setFunctions).catch(() => {})

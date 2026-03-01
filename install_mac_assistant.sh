@@ -217,6 +217,10 @@ STOPPLIST
 
 echo "✅ Stop icon created at: $STOP_APP_DIR"
 
+# Clean up old log files
+echo "🧹 Cleaning up old logs..."
+rm -rf logs/
+
 echo "╔════════════════════════════════════════════════════════════╗"
 echo "║              ✅ INSTALLATION COMPLETE! ✅                  ║"
 echo "╚════════════════════════════════════════════════════════════╝"
