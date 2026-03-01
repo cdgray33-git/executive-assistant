@@ -257,10 +257,10 @@ function App() {
         
         // Update modal if it's open for this account
         if (selectedOrganization?.account?.account_id === accountId) {
-          setSelectedOrganization({
-            account: { ...selectedOrganization.account },
+          setSelectedOrganization(prev => ({
+            account: { ...prev.account },
             progress: data
-          })
+          }))
         }
         
         if (data.status === "completed" || data.status === "cancelled") {
