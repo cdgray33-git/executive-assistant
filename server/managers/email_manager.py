@@ -770,6 +770,11 @@ Write a clear, professional email. Include appropriate greeting and closing."""
                             trashed_count += deleted
                             failed_count += failed
                             logger.info(f"✅ Deleted {deleted} from {acc_id}")
+                        # Update spam count in real-time
+                        if kwargs.get("update_progress_callback"):
+                            kwargs["update_progress_callback"]({
+                                "spam_count": trashed_count
+                            })
                         else:
                             failed_count += len(spam_ids)
                             logger.error(f"❌ Delete failed {acc_id}: {result.get('error')}")
@@ -796,8 +801,8 @@ Write a clear, professional email. Include appropriate greeting and closing."""
                             })
                     except Exception as e:
                         logger.error(f"Failed to categorize email: {e}")
-                        email["auto_category"] = "Inbox"
-
+            moved_count = 0
+            if auto_categorize and keep_emails:
                 for email in keep_emails:
                     category = email.get("auto_category")
                     if category and category != "Inbox":
@@ -807,9 +812,16 @@ Write a clear, professional email. Include appropriate greeting and closing."""
                                 connector = connectors[acc_id]
                                 if hasattr(connector, 'move_to_folder'):
                                     connector.move_to_folder([email["id"]], category)
+                                    moved_count += 1
                                     logger.info(f"📂 Moved to {category}: {email.get('subject', 'No subject')[:50]}")
                         except Exception as e:
                             logger.error(f"Failed to move email to {category}: {e}")
+
+                # Update progress with moved count
+                if kwargs.get("update_progress_callback"):
+                    kwargs["update_progress_callback"]({
+                        "moved_count": moved_count
+                    })
             
             self._cleanup_connectors(connectors)
             
