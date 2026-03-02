@@ -384,8 +384,6 @@ async def run_organization_loop(user_id: str, account_id: str):
     
     organizer = MailboxOrganizer()
     
-    except Exception as e:
-        logger.warning(f"Cleanup failed (non-critical): {e}")
     
     while True:
         try:
@@ -459,6 +457,7 @@ async def pause_organization(account_id: str, user_id: str = "default_user"):
     organizer = MailboxOrganizer()
     
 
+    return organizer.pause_organization(user_id, account_id)
 
 @app.post("/api/email/organize/cancel", dependencies=[Depends(verify_key)])
 async def cancel_organization(account_id: str, user_id: str = "default_user"):
@@ -484,8 +483,6 @@ async def get_organization_status(account_id: str, user_id: str = "default_user"
     from server.managers.mailbox_organizer import MailboxOrganizer
     organizer = MailboxOrganizer()
     
-    except Exception as e:
-        logger.warning(f"Cleanup failed (non-critical): {e}")
     progress = organizer.get_progress(user_id, account_id)
     if not progress:
         return {"status": "not_started", "message": "No organization in progress"}
@@ -498,8 +495,6 @@ async def get_all_organization_status(user_id: str = "default_user"):
     from server.managers.mailbox_organizer import MailboxOrganizer
     organizer = MailboxOrganizer()
     
-    except Exception as e:
-        logger.warning(f"Cleanup failed (non-critical): {e}")
     return {"accounts": organizer.get_all_progress(user_id)}
 
 async def get_email_stats(account_id: str):
