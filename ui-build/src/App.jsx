@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Mail, Calendar, Users, Settings, MessageSquare, Loader, Pause, ChevronDown, ChevronUp, Zap, CheckCircle, Plus, Trash2, TestTube } from 'lucide-react'
 import { Calendar as CalendarIcon, CheckCircle2, XCircle, Clock, AlertCircle } from 'lucide-react'
 import ChatInterface from './ChatInterface'
@@ -25,7 +25,7 @@ function App() {
   const [startOrganizeModal, setStartOrganizeModal] = useState(null)  // Account to start organizing
   const [selectedOrganization, setSelectedOrganization] = useState(null)  // For modal
   const [organizingAccount, setOrganizingAccount] = useState(null)  // Currently starting organization
-  const [organizationPollInterval, setOrganizationPollInterval] = useState(null)  // Polling timer
+  const organizationPollInterval = useRef(null)  // Polling timer
 
   useEffect(() => {
     loadData()
@@ -34,11 +34,11 @@ function App() {
   // Cleanup polling on unmount
   useEffect(() => {
     return () => {
-      if (organizationPollInterval) {
-        clearInterval(organizationPollInterval)
+      if (organizationPollInterval.current) {
+        clearInterval(organizationPollInterval.current)
       }
     }
-  }, [organizationPollInterval])
+  })
 
   const loadData = () => {
     fetch('/health').then(r => r.json()).then(setHealth).catch(() => {})
@@ -228,9 +228,8 @@ function App() {
   }
 
   const startOrganizationPolling = (accountId = null) => {
-    if (organizationPollInterval) clearInterval(organizationPollInterval)
-    const interval = setInterval(() => pollOrganizationStatus(accountId), 5000)
-    setOrganizationPollInterval(interval)
+    if (organizationPollInterval.current) clearInterval(organizationPollInterval.current)
+    organizationPollInterval.current = setInterval(() => pollOrganizationStatus(accountId), 5000)
     pollOrganizationStatus(accountId)
   }
 
@@ -255,7 +254,7 @@ function App() {
         }
         
         if (data.status === "completed" || data.status === "cancelled") {
-          clearInterval(organizationPollInterval)
+          clearInterval(organizationPollInterval.current)
         }
       } else {
         const progressMap = {}
