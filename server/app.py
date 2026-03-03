@@ -432,7 +432,7 @@ async def start_organization(background_tasks: BackgroundTasks, account_id: str,
             result = session.execute(
                 text("""
                     UPDATE email_organization_progress 
-                    SET status = 'cancelled', completed_at = NOW() 
+                    SET status = 'cancelled', completed_at = NOW(), spam_count = 0, keep_count = 0, moved_count = 0, unsure_count = 0, processed_count = 0 
                     WHERE account_id = :account_id 
                     AND status IN ('running', 'starting') 
                     AND user_id = :user_id
