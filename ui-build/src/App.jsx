@@ -213,6 +213,17 @@ function App() {
     
     // Open modal immediately
     startOrganizationPolling(accountId)  // Start polling immediately
+
+    // Update state to show organization is starting
+    setOrganizationProgress(prev => ({
+      ...prev,
+      [accountId]: {
+        status: "starting",
+        processed_count: 0,
+        total_emails: 0,
+        progress_percent: 0
+      }
+    }))
     try {
       const res = await fetch(`${API_BASE}/api/email/organize/start?account_id=${accountId}&batch_size=${batchSize}`, {
         method: "POST",
