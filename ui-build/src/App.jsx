@@ -249,7 +249,7 @@ function App() {
 
   const startOrganizationPolling = (accountId = null) => {
     if (organizationPollInterval.current) clearInterval(organizationPollInterval.current)
-    organizationPollInterval.current = setInterval(() => pollOrganizationStatus(accountId), 5000)
+    organizationPollInterval.current = setInterval(() => pollOrganizationStatus(accountId), 2000)
     pollOrganizationStatus(accountId)
   }
 

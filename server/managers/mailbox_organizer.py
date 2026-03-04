@@ -148,7 +148,7 @@ class MailboxOrganizer:
                             ON CONFLICT (user_id, account_id) 
                             DO UPDATE SET
                                 status = 'running', total_emails = :total_emails, batch_size = :batch_size,
-                                processed_count = 0, spam_count = 0, moved_count = 0, keep_count = 0, unsure_count = 0,
+                                processed_count = 0, spam_count = 0, moved_count = 0, keep_count = 0, unsure_count = 0, categorizing_count = 0, categorizing_total = 0,
                                 started_at = NOW(), last_update = NOW()
                         """),
                         {"user_id": user_id, "account_id": account_id, "provider": provider,
