@@ -8,6 +8,13 @@ echo "║          EXECUTIVE ASSISTANT - STARTING                    ║"
 echo "╚════════════════════════════════════════════════════════════╝"
 echo ""
 
+# Clear Python cache
+echo "🧹 Clearing Python cache..."
+find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null
+find . -type f -name "*.pyc" -delete
+echo "✅ Cache cleared"
+echo ""
+
 # Activate virtual environment
 source ~/.executive-assistant-env/bin/activate
 
