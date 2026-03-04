@@ -770,11 +770,11 @@ Write a clear, professional email. Include appropriate greeting and closing."""
                             trashed_count += deleted
                             failed_count += failed
                             logger.info(f"✅ Deleted {deleted} from {acc_id}")
-                        # Update spam count in real-time
-                        if kwargs.get("update_progress_callback"):
-                            kwargs["update_progress_callback"]({
-                                "spam_count": trashed_count
-                            })
+                            # Update spam count in real-time
+                            if kwargs.get("update_progress_callback"):
+                                kwargs["update_progress_callback"]({
+                                    "spam_count": trashed_count
+                                })
                         else:
                             failed_count += len(spam_ids)
                             logger.error(f"❌ Delete failed {acc_id}: {result.get('error')}")

@@ -1,8 +1,8 @@
 """
+import asyncio
 Mailbox Organization Manager
 Handles batch processing of email backlogs with pause/resume capability
 """
-import asyncio
 import logging
 from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
@@ -146,9 +146,10 @@ class MailboxOrganizer:
                             (user_id, account_id, provider, email_address, total_emails, batch_size, status, started_at)
                             VALUES (:user_id, :account_id, :provider, :email_address, :total_emails, :batch_size, 'running', NOW())
                             ON CONFLICT (user_id, account_id) 
-                            DO UPDATE SET 
+                            DO UPDATE SET
                                 status = 'running', total_emails = :total_emails, batch_size = :batch_size,
-                                processed_count = 0, started_at = NOW(), last_update = NOW()
+                                processed_count = 0, spam_count = 0, moved_count = 0, keep_count = 0, unsure_count = 0,
+                                started_at = NOW(), last_update = NOW()
                         """),
                         {"user_id": user_id, "account_id": account_id, "provider": provider,
                          "email_address": email_address, "total_emails": total_emails, "batch_size": batch_size}
