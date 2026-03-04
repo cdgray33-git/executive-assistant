@@ -1,8 +1,8 @@
 """
-import asyncio
 Mailbox Organization Manager
 Handles batch processing of email backlogs with pause/resume capability
 """
+import asyncio
 import logging
 from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
