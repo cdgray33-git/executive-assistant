@@ -814,15 +814,14 @@ Write a clear, professional email. Include appropriate greeting and closing."""
                                     connector.move_to_folder([email["id"]], category)
                                     moved_count += 1
                                     logger.info(f"📂 Moved to {category}: {email.get('subject', 'No subject')[:50]}")
+                                    # Update moved count in real-time
+                                    if kwargs.get("update_progress_callback"):
+                                        kwargs["update_progress_callback"]({
+                                            "moved_count": moved_count
+                                        })
                         except Exception as e:
                             logger.error(f"Failed to move email to {category}: {e}")
 
-                # Update progress with moved count
-                if kwargs.get("update_progress_callback"):
-                    kwargs["update_progress_callback"]({
-                        "moved_count": moved_count
-                    })
-            
             self._cleanup_connectors(connectors)
             
             # Build response with all 3 categories
