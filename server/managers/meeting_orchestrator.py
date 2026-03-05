@@ -1,4 +1,5 @@
 """
+from server.draft_manager import draft_manager
 Meeting Orchestrator - Complex meeting scheduling workflows
 Location: server/managers/meeting_orchestrator.py
 """
@@ -132,16 +133,20 @@ Best regards"""
             invites_sent = []
             failed_invites = []
             for attendee in resolved_attendees:
-                try:
-                    result = self.email_mgr.send_email(to=attendee["email"], subject=f"Meeting Invitation: {title}", body=invite_body)
-                    if result.get("status") == "success":
-                        invites_sent.append({"to": attendee["email"], "name": attendee["name"], "status": "sent"})
-                        logger.info(f"Sent meeting invite to {attendee['email']}")
-                    else:
-                        failed_invites.append({"to": attendee["email"], "error": result.get("error")})
-                except Exception as e:
-                    failed_invites.append({"to": attendee["email"], "error": str(e)})
-            
+                    # Create draft instead of sending immediately
+                    draft_id = draft_manager.create_draft(
+                        to=attendee["email"],
+                        subject=f"Meeting Invitation: {title}",
+                        body=invite_body,
+                        from_account="primary"
+                    )
+                    invites_sent.append({
+                        "to": attendee["email"],
+                        "name": attendee["name"],
+                        "status": "draft_created",
+                        "draft_id": draft_id
+                    })
+                    logger.info(f"Created draft invite for {attendee['email']}: {draft_id}")
             # Step 6: Store in database (optional)
             try:
                 from server.database.connection import get_db_session
@@ -172,7 +177,7 @@ Best regards"""
             except:
                 pass
             
-            return {"status": "success", "meeting": {"event_id": event["id"], "title": title, "date": date, "time": time, "duration": duration, "attendees": resolved_attendees}, "invites_sent": invites_sent, "failed_invites": failed_invites, "message": f"Meeting scheduled. Sent {len(invites_sent)}/{len(resolved_attendees)} invites"}
+            return {"status": "success", "meeting": {"event_id": event["id"], "title": title, "date": date, "time": time, "duration": duration, "attendees": resolved_attendees}, "invites_sent": invites_sent, "failed_invites": failed_invites, "message": f"Meeting scheduled. Created draft invites for {len(invites_sent)}/{len(resolved_attendees)} invites"}
         except Exception as e:
             logger.error(f"Error scheduling meeting: {e}")
             return {"status": "error", "error": str(e)}
