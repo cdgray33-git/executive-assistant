@@ -18,7 +18,7 @@ class EmailMonitor:
     """Background service for email monitoring"""
     
     def __init__(self, account_mgr: AccountManager, email_mgr: EmailManager, 
-                 context_engine: ContextEngine, poll_interval: int = 180):
+                 context_engine: ContextEngine = None, poll_interval: int = 180):
         self.account_mgr = account_mgr
         self.email_mgr = email_mgr
         self.context_engine = context_engine

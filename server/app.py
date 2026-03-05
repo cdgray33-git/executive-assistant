@@ -98,11 +98,9 @@ async def startup_monitors():
     import asyncio
     from server.services.email_monitor import EmailMonitor
     from server.services.meeting_response_monitor import MeetingResponseMonitor
-    from server.intelligence.context_engine import ContextEngine
     
     try:
-        context_engine = ContextEngine()
-        email_monitor = EmailMonitor(account_mgr, email_manager_instance, context_engine, poll_interval=180)
+        email_monitor = EmailMonitor(account_mgr, email_manager_instance, None, poll_interval=180)
         meeting_monitor = MeetingResponseMonitor(email_manager_instance, poll_interval=180)
         asyncio.create_task(email_monitor.start())
         asyncio.create_task(meeting_monitor.start())
