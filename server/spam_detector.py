@@ -74,20 +74,44 @@ class SpamDetector:
         results = []
         total = len(emails)
         
+        # Initialize real-time counters
+        spam_count = 0
+        keep_count = 0
+        unsure_count = 0
+
         logger.info(f"Categorizing {total} emails...")
-        
+
         for i in range(0, total, batch_size):
             batch = emails[i:i+batch_size]
-            
+
             for email in batch:
                 result = self.categorize_email(email)
                 results.append(result)
+                
+                # Update counters immediately
+                category = result.get("category")
+                if category == "spam":
+                    spam_count += 1
+                elif category == "keep":
+                    keep_count += 1
+                elif category == "unsure":
+                    unsure_count += 1
 
-                # Report progress if callback provided
+                # Report progress with counts if callback provided
                 if progress_callback:
                     done = len(results)
-                    logger.info(f"🔔 Callback firing: {done}/{total}")
-                    progress_callback({"current": done, "total": total})
+                    logger.info(f"🔔 Callback firing: {done}/{total} (Spam: {spam_count}, Keep: {keep_count}, Unsure: {unsure_count})")
+                    progress_callback({
+                        "current": done,
+                        "total": total,
+                        "spam_count": spam_count,
+                        "keep_count": keep_count,
+                        "unsure_count": unsure_count
+                    })
+
+            # Progress logging
+            done = min(i + batch_size, total)
+            logger.info(f"Progress: {done}/{total} emails categorized")
             
             # Progress logging
             done = min(i + batch_size, total)

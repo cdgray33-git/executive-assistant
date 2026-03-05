@@ -714,8 +714,10 @@ Write a clear, professional email. Include appropriate greeting and closing."""
                     kwargs['update_progress_callback']({
                         'processed_count': counts['current'],
                         'total_emails': counts['total'],
+                        'spam_count': counts.get('spam_count', 0),
+                        'keep_count': counts.get('keep_count', 0),
+                        'unsure_count': counts.get('unsure_count', 0)
                     })
-            
             detector = SpamDetector()
             categorized = detector.batch_categorize(emails_to_check, progress_callback=spam_progress)
             
