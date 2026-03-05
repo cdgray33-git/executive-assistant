@@ -133,6 +133,7 @@ Best regards"""
             invites_sent = []
             failed_invites = []
             for attendee in resolved_attendees:
+                try:
                     # Create draft instead of sending immediately
                     draft_id = draft_manager.create_draft(
                         to=attendee["email"],
@@ -147,6 +148,9 @@ Best regards"""
                         "draft_id": draft_id
                     })
                     logger.info(f"Created draft invite for {attendee['email']}: {draft_id}")
+                except Exception as e:
+                    failed_invites.append({"to": attendee["email"], "error": str(e)})
+            
             # Step 6: Store in database (optional)
             try:
                 from server.database.connection import get_db_session
@@ -177,7 +181,7 @@ Best regards"""
             except:
                 pass
             
-            return {"status": "success", "meeting": {"event_id": event["id"], "title": title, "date": date, "time": time, "duration": duration, "attendees": resolved_attendees}, "invites_sent": invites_sent, "failed_invites": failed_invites, "message": f"Meeting scheduled. Created draft invites for {len(invites_sent)}/{len(resolved_attendees)} invites"}
+            return {"status": "success", "meeting": {"event_id": event["id"], "title": title, "date": date, "time": time, "duration": duration, "attendees": resolved_attendees}, "invites_sent": invites_sent, "failed_invites": failed_invites, "message": f"Meeting scheduled. Created draft invites for {len(invites_sent)}/{len(resolved_attendees)} attendees"}
         except Exception as e:
             logger.error(f"Error scheduling meeting: {e}")
             return {"status": "error", "error": str(e)}

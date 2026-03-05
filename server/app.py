@@ -408,11 +408,11 @@ async def run_organization_loop(user_id: str, account_id: str):
             logger.info(f"🔄 Loop iteration for {account_id}, status check...")
             # Check if still running
             status = organizer.get_progress(user_id, account_id)
-            logger.info(f"🔄 Loop iteration for {account_id}, status: {status.get("status")}, {status.get("processed_count")}/{status.get("total_emails")}")
+            logger.info(f"🔄 Loop iteration for {account_id}, status: {status.get('status')}, {status.get('processed_count')}/{status.get('total_emails')}")
             
             # Exit if completed, cancelled, error, or fully processed
-            if status.get("status") not in ["running"]:
-                logger.info(f"Organization stopped for {account_id} - status: {status.get("status")}")
+            if status.get('status') not in ["running"]:
+                logger.info(f"Organization stopped for {account_id} - status: {status.get('status')}")
                 break
             
             if status.get("processed_count", 0) >= status.get("total_emails", 0) and status.get("total_emails", 0) > 0:
