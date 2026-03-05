@@ -25,6 +25,26 @@ note_mgr = NoteManager()
 meeting_mgr = MeetingOrchestrator(email_mgr, calendar_mgr, contact_mgr)
 doc_mgr = DocumentGenerator()
 
+
+from server.draft_manager import draft_manager
+
+def _create_draft_for_approval(**kwargs):
+    """Create draft and return for user approval"""
+    draft_id = draft_manager.create_draft(
+        to=kwargs.get("to"),
+        subject=kwargs.get("subject"),
+        body=kwargs.get("body"),
+        from_account=kwargs.get("from_account", "primary"),
+        cc=kwargs.get("cc"),
+        bcc=kwargs.get("bcc")
+    )
+    return {
+        "status": "draft_created",
+        "draft_id": draft_id,
+        "message": f"Email draft created. Please review and approve via /api/drafts/approve",
+        "drafts_created": [draft_id]
+    }
+
 # Function Registry - Defines all available EA functions
 FUNCTION_REGISTRY = {
     # Email Management
@@ -34,14 +54,14 @@ FUNCTION_REGISTRY = {
         "function": lambda **k: email_mgr.check_all_accounts()
     },
     "send_email": {
-        "description": "Send an email",
+        "description": "Send an email (requires approval)",
         "parameters": {
             "to": "recipient email or name",
             "subject": "email subject",
             "body": "email content",
             "from_account": "optional: specific account to send from"
         },
-        "function": lambda **k: email_mgr.send_email(**k)
+        "function": lambda **k: _create_draft_for_approval(**k)
     },
     "draft_email": {
         "description": "Draft an email without sending",
