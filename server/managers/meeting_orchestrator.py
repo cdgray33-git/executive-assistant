@@ -133,7 +133,17 @@ Best regards"""
             failed_invites = []
             for attendee in resolved_attendees:
                 try:
-                    result = self.email_mgr.send_email(to=attendee["email"], subject=f"Meeting Invitation: {title}", body=invite_body)
+                    # Create draft for approval
+                    from server.draft_manager import DraftManager
+                    draft_mgr = DraftManager()
+                    draft_id = draft_mgr.create_draft(
+                        to=attendee["email"],
+                        subject=f"Meeting Invitation: {title}",
+                        body=invite_body,
+                        from_account="default",
+                        context={"type": "meeting_invite"}
+                    )
+                    result = {"status": "draft_created", "draft_id": draft_id}
                     if result.get("status") == "success":
                         invites_sent.append({"to": attendee["email"], "name": attendee["name"], "status": "sent"})
                         logger.info(f"Sent meeting invite to {attendee['email']}")

@@ -90,6 +90,51 @@ async def startup_cleanup():
                 logger.info(f"Cleaned up {result.rowcount} stuck organization record(s)")
     except Exception as e:
         logger.error(f"Startup cleanup failed: {e}")
+
+@app.on_event("startup")
+async def startup_monitors():
+    """Initialize background email monitoring - checks every 3 minutes"""
+    from server.services.email_monitor import EmailMonitor
+    from server.services.meeting_response_monitor import MeetingResponseMonitor
+    from server.managers.calendar_manager import CalendarManager
+    import asyncio
+    
+    try:
+        logger.info("🚀 Starting email monitoring services...")
+        
+        account_mgr = AccountManager()
+        email_mgr = EmailManager()
+        calendar_mgr = CalendarManager()
+        
+        # Email monitor - 180 seconds = 3 minutes
+        email_monitor = EmailMonitor(
+            account_mgr=account_mgr,
+            email_mgr=email_mgr,
+            poll_interval=180
+        )
+        
+        # Meeting response monitor
+        meeting_monitor = MeetingResponseMonitor(
+            email_mgr=email_mgr,
+            calendar_mgr=calendar_mgr,
+            meeting_orch=MeetingOrchestrator(email_mgr, calendar_mgr),
+            poll_interval=180
+        )
+        
+        # Delay 10 seconds to let server fully initialize
+        await asyncio.sleep(10)
+        
+        # Start background tasks
+        asyncio.create_task(email_monitor.start())
+        asyncio.create_task(meeting_monitor.start())
+        
+        logger.info("✅ Email monitors running (checking every 3 minutes)")
+        
+    except Exception as e:
+        logger.error(f"❌ Monitor startup failed: {e}")
+        import traceback
+        traceback.print_exc()
+
 # Service instances
 ollama = OllamaAdapter()
 spam_detector = SpamDetector()
@@ -390,11 +435,11 @@ async def run_organization_loop(user_id: str, account_id: str):
             logger.info(f"🔄 Loop iteration for {account_id}, status check...")
             # Check if still running
             status = organizer.get_progress(user_id, account_id)
-            logger.info(f"🔄 Loop iteration for {account_id}, status: {status.get("status")}, {status.get("processed_count")}/{status.get("total_emails")}")
+            logger.info(f"🔄 Loop iteration for {account_id}, status: {status.get('status')}, {status.get('processed_count')}/{status.get('total_emails')}")
             
             # Exit if completed, cancelled, error, or fully processed
             if status.get("status") not in ["running"]:
-                logger.info(f"Organization stopped for {account_id} - status: {status.get("status")}")
+                logger.info(f"Organization stopped for {account_id} - status: {status.get('status')}")
                 break
             
             if status.get("processed_count", 0) >= status.get("total_emails", 0) and status.get("total_emails", 0) > 0:

@@ -44,8 +44,10 @@ class EmailMonitor:
         logger.info("Email monitor stopped")
     
     async def _poll_all_accounts(self):
-        """Poll all accounts for new emails"""
-        result = self.email_mgr.check_all_accounts()
+        """Poll all accounts for new emails (non-blocking)"""
+        import asyncio
+        # Run synchronous IMAP calls in thread pool to avoid blocking
+        result = await asyncio.to_thread(self.email_mgr.check_all_accounts)
         
         if result["priority_messages"]:
             logger.info(f"Found {len(result['priority_messages'])} priority messages")
