@@ -44,6 +44,7 @@ from server import assistant_functions
 
 # Phase 3: Account management
 from server.managers.account_manager import AccountManager
+from server.managers.contact_manager import ContactManager
 
 logger = logging.getLogger("executive_assistant")
 logging.basicConfig(level=logging.INFO)
