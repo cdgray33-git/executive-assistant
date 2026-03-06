@@ -138,7 +138,7 @@ async def startup_monitors():
         meeting_monitor = MeetingResponseMonitor(
             email_mgr=email_mgr,
             calendar_mgr=calendar_mgr,
-            meeting_orch=MeetingOrchestrator(email_mgr, calendar_mgr),
+            meeting_orch=MeetingOrchestrator(email_mgr, calendar_mgr, contact_mgr),
             poll_interval=180
         )
         
