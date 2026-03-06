@@ -107,9 +107,28 @@ async def startup_monitors():
         calendar_mgr = CalendarManager()
         
         # Email monitor - 180 seconds = 3 minutes
+        contact_mgr = ContactManager()
+        
+        # Initialize intelligence components for context analysis
+        from server.intelligence.priority_engine import PriorityEngine
+        from server.intelligence.category_learner import CategoryLearner
+        from server.intelligence.context_engine import ContextEngine
+        
+        priority_engine = PriorityEngine()
+        category_learner = CategoryLearner()
+        context_engine = ContextEngine(
+            priority_engine=priority_engine,
+            category_learner=category_learner,
+            contact_mgr=contact_mgr
+        )
+        
+        logger.info("✅ Intelligence components initialized")
+        
+        # Email monitor (checks every 180 seconds = 3 minutes)
         email_monitor = EmailMonitor(
             account_mgr=account_mgr,
             email_mgr=email_mgr,
+            context_engine=context_engine,
             poll_interval=180
         )
         
