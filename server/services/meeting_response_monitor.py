@@ -62,12 +62,11 @@ class MeetingResponseMonitor:
                 logger.warning("No primary email account configured")
                 return
             
-            # Fetch recent emails (last 24 hours)
-            since_date = datetime.now() - timedelta(days=1)
-            emails = self.email_manager.get_messages(
-                account_id=primary_account,
-                folder="INBOX",
-                limit=50
+            # Fetch recent emails (last 24 hours) using search_email
+            # Note: search_email doesn't support date filtering, so we get recent 50
+            emails = self.email_manager.search_email(
+                query="",  # Empty query returns recent emails
+                account=primary_account
             )
             
             if not emails or emails.get("status") != "success":
