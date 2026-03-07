@@ -45,8 +45,12 @@ def _create_draft_for_approval(**kwargs):
         "status": "draft_created",
         "draft_id": draft_id,
         "message": f"Draft created for review. Draft ID: {draft_id}",
-        "to": kwargs.get('to'),
-        "subject": kwargs.get('subject')
+        "drafts_created": [{
+            "draft_id": draft_id,
+            "to": kwargs.get('to'),
+            "subject": kwargs.get('subject'),
+            "name": kwargs.get('to')
+        }]
     }
 
 # Function Registry - Defines all available EA functions
