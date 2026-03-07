@@ -144,9 +144,9 @@ Best regards"""
                         context={"type": "meeting_invite"}
                     )
                     result = {"status": "draft_created", "draft_id": draft_id}
-                    if result.get("status") == "success":
-                        invites_sent.append({"to": attendee["email"], "name": attendee["name"], "status": "sent"})
-                        logger.info(f"Sent meeting invite to {attendee['email']}")
+                    if result.get("status") == "draft_created":
+                        invites_sent.append({"to": attendee["email"], "name": attendee["name"], "status": "draft_created"})
+                        logger.info(f"Created draft meeting invite for {attendee['email']}")
                     else:
                         failed_invites.append({"to": attendee["email"], "error": result.get("error")})
                 except Exception as e:
