@@ -17,16 +17,29 @@ export default function ChatInterface() {
       if (data.config) setConfig(data.config)
     }).catch(() => {})
     
-    setMessages([{
-      role: 'assistant',
-      content: `Hello ${config.user_name}, I'm ${config.ea_name}. How can I help you today?`
-    }])
+      // Load persisted messages or show welcome
+      const saved = localStorage.getItem("jarvis_messages")
+      if (saved) {
+        setMessages(JSON.parse(saved))
+      } else {
+        setMessages([{
+          role: "assistant",
+          content: `Hello ${config.user_name}, I'm ${config.ea_name}. How can I help you today?`
+        }])
+      }
     
     loadPendingDrafts()
   }, [])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  // Persist messages to localStorage
+  useEffect(() => {
+    if (messages.length > 0) {
+      localStorage.setItem("jarvis_messages", JSON.stringify(messages))
+    }
   }, [messages])
 
   const loadPendingDrafts = async () => {

@@ -110,6 +110,64 @@ class CalendarManager:
             logger.error(f"Error adding event: {e}")
             return {"status": "error", "error": str(e)}
     
+    def search_events(self, query: str, days: int = 30) -> Dict[str, Any]:
+        """
+        Search for events by query string
+        
+        Args:
+            query: Search term (date like '3/12', 'next week', topic, attendee)
+            days: Number of days to search ahead
+            
+        Returns:
+            Matching events
+        """
+        try:
+            from dateutil import parser as date_parser
+            import re
+            
+            query_lower = query.lower()
+            matches = []
+            
+            # Get events in range
+            now = datetime.now(self.timezone)
+            end_date = now + timedelta(days=days)
+            
+            for event in self.events:
+                event_start = datetime.fromisoformat(event["start"])
+                if not (now <= event_start <= end_date):
+                    continue
+                
+                # Match by date (3/12, march 12, etc)
+                try:
+                    query_date = date_parser.parse(query, fuzzy=True)
+                    if event_start.date() == query_date.date():
+                        matches.append(event)
+                        continue
+                except:
+                    pass
+                
+                # Match by title
+                if query_lower in event.get("title", "").lower():
+                    matches.append(event)
+                    continue
+                
+                # Match by attendees
+                attendees = event.get("attendees", [])
+                for attendee in attendees:
+                    if query_lower in attendee.get("email", "").lower() or query_lower in attendee.get("name", "").lower():
+                        matches.append(event)
+                        break
+            
+            return {
+                "status": "success",
+                "events": matches,
+                "count": len(matches),
+                "query": query
+            }
+        except Exception as e:
+            logger.error(f"Error searching events: {e}")
+            return {"status": "error", "error": str(e)}
+
     def get_events(self, days: int = 7, **kwargs) -> Dict[str, Any]:
         """
         Get upcoming calendar events
@@ -270,11 +328,3 @@ class CalendarManager:
         """Get a specific event by ID"""
         return next((e for e in self.events if e["id"] == event_id), None)
     
-    def search_events(self, query: str) -> List[Dict]:
-        """Search events by title or description"""
-        query = query.lower()
-        return [
-            e for e in self.events 
-            if query in e["title"].lower() or 
-               (e.get("description") and query in e["description"].lower())
-        ]

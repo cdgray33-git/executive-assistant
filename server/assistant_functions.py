@@ -185,7 +185,26 @@ FUNCTION_REGISTRY = {
         },
         "function": lambda **k: meeting_mgr.schedule_meeting(**k)
     },
-    "reschedule_meeting": {
+    "search_calendar": {
+        "description": "Search for meetings/events by date, topic, or attendee",
+        "parameters": {
+            "query": "search term (date like '3/12', 'next week', topic, or attendee name)",
+            "days": "optional: number of days to search (default 30)"
+        },
+        "function": lambda **k: calendar_mgr.search_events(k.get('query', ''), days=k.get('days', 30))
+    },
+    "update_meeting": {
+        "description": "Update an existing meeting time or details",
+        "parameters": {
+            "event_id": "event ID from search results",
+            "start_time": "optional: new start time (HH:MM format)",
+            "date": "optional: new date",
+            "title": "optional: new title",
+            "duration": "optional: new duration in minutes"
+        },
+        "function": lambda **k: calendar_mgr.update_event(k.get('event_id'), k)
+    },
+        "reschedule_meeting": {
         "description": "Reschedule an existing meeting",
         "parameters": {
             "meeting_id": "event identifier",
