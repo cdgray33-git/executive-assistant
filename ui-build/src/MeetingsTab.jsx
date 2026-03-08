@@ -64,7 +64,7 @@ export default function MeetingsTab({ meetings, loading, onRefresh }) {
                   </div>
                   
                   <div className="text-sm text-gray-600 space-y-1">
-                    <p>📅 {new Date(meeting.date).toLocaleDateString()} at {meeting.time}</p>
+                    <p>📅 {meeting.date.split("T")[0]} at {meeting.time}</p>
                     <p>⏱️ Duration: {meeting.duration} minutes</p>
                     <p>👥 Attendees: {meeting.attendees?.length || 0}</p>
                     {meeting.description && (
