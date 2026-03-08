@@ -93,7 +93,7 @@ async def startup_cleanup():
     except Exception as e:
         logger.error(f"Startup cleanup failed: {e}")
 
-@app.on_event("startup")
+# @app.on_event("startup")
 async def startup_monitors_DISABLED():
     """Initialize background email monitoring - checks every 3 minutes"""
     from server.services.email_monitor import EmailMonitor
