@@ -199,7 +199,7 @@ class CalendarManager:
 
     def get_events(self, days: int = 7, **kwargs) -> Dict[str, Any]:
         """
-        Get upcoming calendar events
+        Get upcoming calendar events from database
         
         Args:
             days: Number of days to look ahead
@@ -208,29 +208,54 @@ class CalendarManager:
             List of events
         """
         try:
+            from server.database.connection import get_db_session
+            from sqlalchemy import text
+            
             now = datetime.now(self.timezone)
             end_date = now + timedelta(days=days)
             
-            upcoming = []
-            for event in self.events:
-                event_start = datetime.fromisoformat(event["start"])
-                if now <= event_start <= end_date:
-                    upcoming.append(event)
-            
-            # Sort by start time
-            upcoming.sort(key=lambda e: e["start"])
-            
-            return {
-                "status": "success",
-                "events": upcoming,
-                "count": len(upcoming),
-                "period": f"Next {days} days"
-            }
-            
+            with get_db_session() as db:
+                result = db.execute(text("""
+                    SELECT id, event_id, title, date, time, duration,
+                           attendees, status, description
+                    FROM meetings
+                    WHERE date >= :start_date
+                    AND date <= :end_date
+                    ORDER BY date, time
+                """), {
+                    'start_date': now.date(),
+                    'end_date': end_date.date()
+                })
+                
+                events = []
+                for row in result:
+                    # Construct datetime from date + time
+                    event_datetime = datetime.combine(row.date, row.time)
+                    event_datetime = self.timezone.localize(event_datetime)
+                    end_datetime = event_datetime + timedelta(minutes=row.duration)
+                    
+                    events.append({
+                        'id': row.event_id,
+                        'title': row.title,
+                        'start': event_datetime.isoformat(),
+                        'end': end_datetime.isoformat(),
+                        'duration_minutes': row.duration,
+                        'description': row.description,
+                        'created_at': '',
+                        'updated_at': ''
+                    })
+                
+                return {
+                    "status": "success",
+                    "events": events,
+                    "count": len(events),
+                    "period": f"Next {days} days"
+                }
+
         except Exception as e:
             logger.error(f"Error getting events: {e}")
             return {"status": "error", "error": str(e)}
-    
+
     def check_availability(self, date: str, time: str, duration: int = 60, **kwargs) -> Dict[str, Any]:
         """
         Check if a time slot is available
