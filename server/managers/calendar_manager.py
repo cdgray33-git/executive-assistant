@@ -112,7 +112,7 @@ class CalendarManager:
     
     def search_events(self, query: str, days: int = 30) -> Dict[str, Any]:
         """
-        Search for events by query string
+        Search for events by query string in database
         
         Args:
             query: Search term (date like '3/12', 'next week', topic, attendee)
@@ -122,48 +122,77 @@ class CalendarManager:
             Matching events
         """
         try:
+            from server.database.connection import get_db_session
+            from sqlalchemy import text
             from dateutil import parser as date_parser
-            import re
             
             query_lower = query.lower()
-            matches = []
             
-            # Get events in range
+            # Try to parse as date
+            query_date = None
+            try:
+                parsed = date_parser.parse(query, fuzzy=True)
+                query_date = parsed.strftime('%Y-%m-%d')
+            except:
+                pass
+            
+            # Calculate date range
             now = datetime.now(self.timezone)
             end_date = now + timedelta(days=days)
             
-            for event in self.events:
-                event_start = datetime.fromisoformat(event["start"])
-                if not (now <= event_start <= end_date):
-                    continue
+            # Query database
+            with get_db_session() as db:
+                if query_date:
+                    # Search by date
+                    sql = text("""
+                        SELECT id, event_id, title, date, time, duration,
+                               attendees, status, description
+                        FROM meetings
+                        WHERE date = :query_date
+                        AND date >= :start_date
+                        AND date <= :end_date
+                    """)
+                    result = db.execute(sql, {
+                        'query_date': query_date,
+                        'start_date': now.date(),
+                        'end_date': end_date.date()
+                    })
+                else:
+                    # Search by title or attendees
+                    sql = text("""
+                        SELECT id, event_id, title, date, time, duration,
+                               attendees, status, description
+                        FROM meetings
+                        WHERE (LOWER(title) LIKE :query OR LOWER(attendees::text) LIKE :query)
+                        AND date >= :start_date
+                        AND date <= :end_date
+                    """)
+                    result = db.execute(sql, {
+                        'query': f'%{query_lower}%',
+                        'start_date': now.date(),
+                        'end_date': end_date.date()
+                    })
                 
-                # Match by date (3/12, march 12, etc)
-                try:
-                    query_date = date_parser.parse(query, fuzzy=True)
-                    if event_start.date() == query_date.date():
-                        matches.append(event)
-                        continue
-                except:
-                    pass
+                matches = []
+                for row in result:
+                    matches.append({
+                        'id': row.id,
+                        'event_id': row.event_id,
+                        'title': row.title,
+                        'date': str(row.date),
+                        'time': str(row.time),
+                        'duration': row.duration,
+                        'attendees': row.attendees,
+                        'status': row.status,
+                        'description': row.description
+                    })
                 
-                # Match by title
-                if query_lower in event.get("title", "").lower():
-                    matches.append(event)
-                    continue
-                
-                # Match by attendees
-                attendees = event.get("attendees", [])
-                for attendee in attendees:
-                    if query_lower in attendee.get("email", "").lower() or query_lower in attendee.get("name", "").lower():
-                        matches.append(event)
-                        break
-            
-            return {
-                "status": "success",
-                "events": matches,
-                "count": len(matches),
-                "query": query
-            }
+                return {
+                    "status": "success",
+                    "events": matches,
+                    "count": len(matches),
+                    "query": query
+                }
         except Exception as e:
             logger.error(f"Error searching events: {e}")
             return {"status": "error", "error": str(e)}
