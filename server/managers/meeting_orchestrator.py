@@ -84,21 +84,44 @@ class MeetingOrchestrator:
         """
         attendee_names = ", ".join([a["name"] for a in attendees])
         
-        body = f"""Hi everyone,
+        from server.config import get_config
+        config = get_config()
+        user_name = config.get("user_name", "User")
+        ea_name = config.get("ea_name", "JARVIS")
+        
+        from datetime import datetime
+        date_obj = datetime.strptime(date, "%Y-%m-%d")
+        formatted_date = date_obj.strftime("%A, %B %d, %Y")
+        
+        time_obj = datetime.strptime(time, "%H:%M")
+        formatted_time = time_obj.strftime("%I:%M %p")
+        
+        recipient = attendees[0]["name"] if len(attendees) == 1 else "Team"
+        
+        body = f"""Dear {recipient},
 
-I'd like to schedule a meeting with the following details:
+I hope this message finds you well.
 
-Meeting: {title}
-Date: {date}
-Time: {time}
+I would like to invite you to a meeting to discuss {title}.
+
+Meeting Details:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Subject: {title}
+Date: {formatted_date}
+Time: {formatted_time}
 Duration: {duration} minutes
 Attendees: {attendee_names}
 
-Please let me know if this time works for you. If you have any conflicts, please suggest an alternative time.
+Please confirm your availability at your earliest convenience. If this time does not work for you, kindly suggest an alternative that suits your schedule.
 
-Looking forward to meeting with you all.
+I look forward to our discussion.
 
-Best regards"""
+Best regards,
+{user_name}
+Executive Assistant: {ea_name}"""
+
+        return body
+
         
         return body
     

@@ -54,6 +54,31 @@ def _create_draft_for_approval(**kwargs):
     }
 
 # Function Registry - Defines all available EA functions
+
+def _parse_relative_date(date_str: str) -> str:
+    """Convert relative dates to YYYY-MM-DD"""
+    from datetime import datetime, timedelta
+    
+    today = datetime.now()
+    date_lower = date_str.lower().strip()
+    
+    days = {'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3, 
+            'friday': 4, 'saturday': 5, 'sunday': 6}
+    
+    if date_lower in days:
+        target_day = days[date_lower]
+        current_day = today.weekday()
+        days_ahead = (target_day - current_day) % 7
+        if days_ahead == 0:
+            days_ahead = 7
+        result = today + timedelta(days=days_ahead)
+        return result.strftime('%Y-%m-%d')
+    
+    if len(date_str) == 10 and date_str[4] == '-':
+        return date_str
+    
+    return date_str
+
 FUNCTION_REGISTRY = {
     # Email Management
     "check_email": {
@@ -183,7 +208,9 @@ FUNCTION_REGISTRY = {
             "duration": "duration in minutes (default 60)",
             "description": "optional meeting description"
         },
-        "function": lambda **k: meeting_mgr.schedule_meeting(**k)
+        "function": lambda **k: meeting_mgr.schedule_meeting(
+            **{**k, 'date': _parse_relative_date(k.get('date', ''))}
+        )
     },
     "search_calendar": {
         "description": "Search for meetings/events by date, topic, or attendee",
