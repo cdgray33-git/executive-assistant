@@ -11,3 +11,9 @@ exports/
 *.tar.gz
 .vscode/
 *.backup-*
+*.backup
+*.backup2
+**/__pycache__/
+*.pyc
+*.bak
+*.backup*
