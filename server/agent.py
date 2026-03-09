@@ -5,7 +5,7 @@ Connects Ollama ? Assistant Functions
 import logging
 import json
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 import ollama
 
 from server.assistant_functions import FUNCTION_REGISTRY, execute_function
@@ -40,7 +40,7 @@ Your personality:
 Available functions:
 {functions_desc}
 
-Current date/time: {datetime.now().strftime('%Y-%m-%d %H:%M')}
+Current date/time: TODAY is 2026-03-09 (Monday). Next Wednesday is 2026-03-11.
 
 IMPORTANT - Date formatting:
 - Always convert relative dates (Monday, next week, 3/12) to YYYY-MM-DD format
