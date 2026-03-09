@@ -145,7 +145,7 @@ Best regards"""
                     )
                     result = {"status": "draft_created", "draft_id": draft_id}
                     if result.get("status") == "draft_created":
-                        invites_sent.append({"to": attendee["email"], "name": attendee["name"], "status": "draft_created"})
+                        invites_sent.append({"to": attendee["email"], "name": attendee["name"], "status": "draft_created", "draft_id": draft_id})
                         logger.info(f"Created draft meeting invite for {attendee['email']}")
                     else:
                         failed_invites.append({"to": attendee["email"], "error": result.get("error")})
@@ -182,7 +182,7 @@ Best regards"""
             except:
                 pass
             
-            return {"status": "success", "meeting": {"event_id": event["id"], "title": title, "date": date, "time": time, "duration": duration, "attendees": resolved_attendees}, "invites_sent": invites_sent, "failed_invites": failed_invites, "message": f"Meeting scheduled. Sent {len(invites_sent)}/{len(resolved_attendees)} invites"}
+            return {"status": "success", "meeting": {"event_id": event["id"], "title": title, "date": date, "time": time, "duration": duration, "attendees": resolved_attendees}, "invites_sent": invites_sent, "failed_invites": failed_invites, "drafts_created": [{"draft_id": inv.get("draft_id", inv.get("to")), "to": inv["to"], "name": inv["name"]} for inv in invites_sent], "message": f"Meeting scheduled. Created {len(invites_sent)} draft invitation(s) for approval. Please review in the chat."}
         except Exception as e:
             logger.error(f"Error scheduling meeting: {e}")
             return {"status": "error", "error": str(e)}
