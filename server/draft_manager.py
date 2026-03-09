@@ -4,7 +4,7 @@ Handles pending email approvals before sending
 SINGLETON PATTERN - Only one instance across application
 """
 import uuid
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 
 class DraftManager:
@@ -55,6 +55,14 @@ class DraftManager:
             return True
         return False
 
-    def get_pending_drafts(self) -> list:
+    def get_pending_drafts(self) -> List[Dict[str, Any]]:
         """Get all pending drafts"""
         return [d for d in self.drafts.values() if d["status"] == "pending"]
+    
+    def list_pending(self) -> List[Dict[str, Any]]:
+        """Alias for get_pending_drafts() - used by API endpoints"""
+        return self.get_pending_drafts()
+
+
+# Global singleton instance for import
+draft_manager = DraftManager()
