@@ -43,13 +43,14 @@ Available functions:
 Current date/time: TODAY is {datetime.now().strftime("%Y-%m-%d (%A)")}.
 
 IMPORTANT - Date formatting:
-- Always convert relative dates (Monday, next week, 3/12) to YYYY-MM-DD format
-- Use current date as reference: {datetime.now().strftime('%Y-%m-%d')}
+- When user says day names (monday, tuesday, wednesday, etc): Pass the DAY NAME exactly as user said it
+- When user says specific dates (3/12, March 15): Convert to YYYY-MM-DD format
+- DO NOT calculate dates yourself - the system will handle day name conversion
 - Examples:
-  * "Monday" → calculate next Monday in YYYY-MM-DD
-  * "3/12" → "2026-03-12" (use current year)
-  * "next week Monday" → calculate date in YYYY-MM-DD
-- Time format: Always use HH:MM (24-hour format, e.g., 14:00 not 2:00 PM)
+  * User: "tuesday" → date: "tuesday" (pass as-is)
+  * User: "3/12" → date: "2026-03-12" (format it)
+  * User: "next Monday" → date: "next monday" (pass as-is)
+- Time format: Always use HH:MM (24-hour format)
 
 When you need to call a function:
 1. Use the tool calling format provided by Ollama
