@@ -8,6 +8,7 @@ export default function ChatInterface() {
   const [loading, setLoading] = useState(false)
   const [config, setConfig] = useState({ ea_name: 'JARVIS', user_name: 'User' })
   const [pendingDrafts, setPendingDrafts] = useState([])
+  const [isListening, setIsListening] = useState(false)
   const [editingDraft, setEditingDraft] = useState(null)
   const messagesEndRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -50,6 +51,21 @@ export default function ChatInterface() {
     } catch (e) {
       console.error('Failed to load drafts:', e)
     }
+
+  const startVoiceInput = () => {
+    if (!('webkitSpeechRecognition' in window)) {
+      alert('Voice input not supported. Use Chrome/Edge.')
+      return
+    }
+    const recognition = new webkitSpeechRecognition()
+    recognition.continuous = false
+    recognition.interimResults = false
+    recognition.onstart = () => setIsListening(true)
+    recognition.onend = () => setIsListening(false)
+    recognition.onresult = (e) => setInput(e.results[0][0].transcript)
+    recognition.onerror = () => setIsListening(false)
+    recognition.start()
+  }
   }
 
   const handleFileChange = (e) => {
@@ -340,6 +356,9 @@ export default function ChatInterface() {
           className="hidden"
           accept=".pdf,.doc,.docx,.txt,.ppt,.pptx"
         />
+          <button onClick={startVoiceInput} disabled={loading||isListening} className={`px-4 py-3 rounded-xl ${isListening?'bg-red-500 text-white animate-pulse':'text-gray-600 hover:bg-gray-100'}`} title="Voice input">
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M7 4a3 3 0 016 0v6a3 3 0 11-6 0V4z"/><path d="M5.5 9.643a.75.75 0 00-1.5 0V10c0 3.06 2.29 5.585 5.25 5.954V17.5h-1.5a.75.75 0 000 1.5h4.5a.75.75 0 000-1.5h-1.5v-1.546A6.001 6.001 0 0016 10v-.357a.75.75 0 00-1.5 0V10a4.5 4.5 0 01-9 0v-.357z"/></svg>
+          </button>
         <button
           onClick={() => fileInputRef.current?.click()}
           className="p-3 text-gray-500 hover:bg-gray-100 rounded-xl"
