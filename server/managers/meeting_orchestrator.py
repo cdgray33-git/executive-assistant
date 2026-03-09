@@ -125,11 +125,45 @@ Executive Assistant: {ea_name}"""
         
         return body
     
+
+    def _validate_and_fix_date(self, date_str: str, original_input: str = "") -> str:
+        """Validate date matches expected day of week, fix if wrong"""
+        from datetime import datetime, timedelta
+        
+        try:
+            date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+            actual_day = date_obj.strftime("%A").lower()
+            
+            # Check if original input was a day name
+            days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+            input_lower = original_input.lower()
+            
+            for day in days:
+                if day in input_lower:
+                    if actual_day != day:
+                        logger.warning(f"Date {date_str} is {actual_day}, expected {day}. Recalculating.")
+                        # Recalculate correct date
+                        target_day = days.index(day)
+                        today = datetime.now()
+                        current_day = today.weekday()
+                        days_ahead = (target_day - current_day) % 7
+                        if days_ahead == 0:
+                            days_ahead = 7
+                        correct_date = today + timedelta(days=days_ahead)
+                        return correct_date.strftime("%Y-%m-%d")
+            
+            return date_str
+        except:
+            return date_str
+
     def schedule_meeting(self, attendees: List[str], title: str, date: str, time: str,
                         duration: int = 60, description: Optional[str] = None, **kwargs) -> Dict[str, Any]:
         """Schedule a meeting with full workflow"""
         try:
             logger.info(f"Scheduling meeting: {title} with {len(attendees)} attendees")
+            
+            # Step 0: Validate and fix date
+            date = self._validate_and_fix_date(date, title)
             
             # Step 1: Resolve attendees
             attendee_result = self._resolve_attendees(attendees)
