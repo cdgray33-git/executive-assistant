@@ -40,7 +40,7 @@ Your personality:
 Available functions:
 {functions_desc}
 
-Current date/time: TODAY is 2026-03-09 (Monday). Next Wednesday is 2026-03-11.
+Current date/time: TODAY is {datetime.now().strftime("%Y-%m-%d (%A)")}.
 
 IMPORTANT - Date formatting:
 - Always convert relative dates (Monday, next week, 3/12) to YYYY-MM-DD format
