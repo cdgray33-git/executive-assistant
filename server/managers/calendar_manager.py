@@ -127,23 +127,60 @@ class CalendarManager:
             from dateutil import parser as date_parser
             
             query_lower = query.lower()
-            
-            # Try to parse as date
-            query_date = None
-            try:
-                parsed = date_parser.parse(query, fuzzy=True)
-                query_date = parsed.strftime('%Y-%m-%d')
-            except:
-                pass
-            
-            # Calculate date range
             now = datetime.now(self.timezone)
-            end_date = now + timedelta(days=days)
             
+            # Parse relative date terms FIRST
+            query_date = None
+            start_date = now.date()
+            end_date = (now + timedelta(days=days)).date()
+            
+            relative_terms = {
+                'today': (0, 0),
+                'tomorrow': (1, 1),
+                'this week': (0, 6 - now.weekday()),
+                'next week': (7 - now.weekday(), 13 - now.weekday()),
+                'this month': (0, 30),
+                'next month': (30, 60)
+            }
+            
+            # Check for relative date terms
+            date_range_query = False
+            for term, (start_offset, end_offset) in relative_terms.items():
+                if term in query_lower:
+                    start_date = (now + timedelta(days=start_offset)).date()
+                    end_date = (now + timedelta(days=end_offset)).date()
+                    date_range_query = True
+                    break
+            
+            # If no relative term found, try parsing as specific date
+            if not date_range_query:
+                try:
+                    parsed = date_parser.parse(query, fuzzy=True)
+                    query_date = parsed.strftime('%Y-%m-%d')
+                except:
+                    pass
+                
+                # Reset end_date for normal queries
+                end_date = (now + timedelta(days=days)).date()
+
             # Query database
             with get_db_session() as db:
-                if query_date:
-                    # Search by date
+                if date_range_query:
+                    # Search by date range (relative terms like "next week")
+                    sql = text("""
+                        SELECT id, event_id, title, date, time, duration,
+                               attendees, status, description
+                        FROM meetings
+                        WHERE date >= :start_date
+                        AND date <= :end_date
+                        ORDER BY date, time
+                    """)
+                    result = db.execute(sql, {
+                        'start_date': start_date,
+                        'end_date': end_date
+                    })
+                elif query_date:
+                    # Search by specific date
                     sql = text("""
                         SELECT id, event_id, title, date, time, duration,
                                attendees, status, description
@@ -154,8 +191,8 @@ class CalendarManager:
                     """)
                     result = db.execute(sql, {
                         'query_date': query_date,
-                        'start_date': now.date(),
-                        'end_date': end_date.date()
+                        'start_date': start_date,
+                        'end_date': end_date
                     })
                 else:
                     # Search by title or attendees
