@@ -56,27 +56,48 @@ def _create_draft_for_approval(**kwargs):
 # Function Registry - Defines all available EA functions
 
 def _parse_relative_date(date_str: str) -> str:
-    """Convert relative dates to YYYY-MM-DD"""
+    """Convert relative dates to YYYY-MM-DD - handles 'next week', day names, etc."""
     from datetime import datetime, timedelta
     
     today = datetime.now()
     date_lower = date_str.lower().strip()
     
-    days = {'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3, 
-            'friday': 4, 'saturday': 5, 'sunday': 6}
-    
-    if date_lower in days:
-        target_day = days[date_lower]
-        current_day = today.weekday()
-        days_ahead = (target_day - current_day) % 7
-        if days_ahead == 0:
-            days_ahead = 7
-        result = today + timedelta(days=days_ahead)
-        return result.strftime('%Y-%m-%d')
-    
+    # Handle already formatted dates
     if len(date_str) == 10 and date_str[4] == '-':
         return date_str
     
+    # Day name mapping
+    days = {'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3,
+            'friday': 4, 'saturday': 5, 'sunday': 6}
+    
+    # Check for "next week" prefix
+    is_next_week = 'next week' in date_lower
+    
+    # Extract day name
+    target_day = None
+    for day_name, day_num in days.items():
+        if day_name in date_lower:
+            target_day = day_num
+            break
+    
+    if target_day is not None:
+        current_day = today.weekday()
+        
+        if is_next_week:
+            # "next week wednesday" = next week's wednesday
+            days_until_next_week = 7 - current_day  # Days until next Monday
+            days_to_target = (target_day - 0) % 7   # Days from Monday to target
+            days_ahead = days_until_next_week + days_to_target
+        else:
+            # "wednesday" or "next wednesday" = next occurrence
+            days_ahead = (target_day - current_day) % 7
+            if days_ahead == 0:  # Today is target day, so get next week
+                days_ahead = 7
+        
+        result = today + timedelta(days=days_ahead)
+        return result.strftime('%Y-%m-%d')
+    
+    # Fallback: return unchanged
     return date_str
 
 FUNCTION_REGISTRY = {
