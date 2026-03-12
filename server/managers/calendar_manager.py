@@ -272,14 +272,15 @@ class CalendarManager:
                     end_datetime = event_datetime + timedelta(minutes=row.duration)
                     
                     events.append({
-                        'id': row.event_id,
+                        'id': row.id,
+                        'event_id': row.event_id,
                         'title': row.title,
-                        'start': event_datetime.isoformat(),
-                        'end': end_datetime.isoformat(),
-                        'duration_minutes': row.duration,
-                        'description': row.description,
-                        'created_at': '',
-                        'updated_at': ''
+                        'date': str(row.date),
+                        'time': str(row.time),
+                        'duration': row.duration,
+                        'attendees': row.attendees,
+                        'status': row.status,
+                        'description': row.description
                     })
                 
                 return {
