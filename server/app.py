@@ -93,9 +93,9 @@ async def startup_cleanup():
     except Exception as e:
         logger.error(f"Startup cleanup failed: {e}")
 
-# @app.on_event("startup")
-async def startup_monitors_DISABLED():
-    """Initialize background email monitoring - checks every 3 minutes"""
+@app.on_event("startup")
+async def startup_monitors():
+    """Initialize background email monitoring - checks every 10 minutes"""
     from server.services.email_monitor import EmailMonitor
     from server.services.meeting_response_monitor import MeetingResponseMonitor
     from server.managers.calendar_manager import CalendarManager
@@ -131,13 +131,13 @@ async def startup_monitors_DISABLED():
             account_mgr=account_mgr,
             email_mgr=email_mgr,
             context_engine=context_engine,
-            poll_interval=180
+            poll_interval=600
         )
         
         # Meeting response monitor
         meeting_monitor = MeetingResponseMonitor(
             email_manager=email_mgr,
-            poll_interval=180
+            poll_interval=600
         )
         
         # Delay 10 seconds to let server fully initialize
@@ -147,7 +147,7 @@ async def startup_monitors_DISABLED():
         asyncio.create_task(email_monitor.start())
         asyncio.create_task(meeting_monitor.start())
         
-        logger.info("✅ Email monitors running (checking every 3 minutes)")
+        logger.info("✅ Email monitors running (checking every 10 minutes)")
         
     except Exception as e:
         logger.error(f"❌ Monitor startup failed: {e}")

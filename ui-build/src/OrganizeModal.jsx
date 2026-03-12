@@ -122,7 +122,7 @@ export default function OrganizeModal({ account, progress, onPause, onCancel, on
           {isPaused && (
             <>
               <button
-                onClick={onRetry}
+                onClick={onPause}
                 className="flex-1 px-4 py-2 bg-seafoam text-white rounded-lg hover:bg-teal-600 transition-colors"
               >
                 Resume
