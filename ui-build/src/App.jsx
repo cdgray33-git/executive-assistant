@@ -3,6 +3,7 @@ import { Mail, Calendar, Users, Settings, MessageSquare, Loader, Pause, ChevronD
 import { Calendar as CalendarIcon, CheckCircle2, XCircle, Clock, AlertCircle } from 'lucide-react'
 import ChatInterface from './ChatInterface'
 import MeetingsTab from './MeetingsTab'
+import CalendarView from './CalendarView'
 import OrganizeModal from './OrganizeModal'
 import StartOrganizeModal from './StartOrganizeModal'
 const API_BASE = window.location.origin.replace(":5173", ":8000") // Dev: 5173->8000, Prod: 8000->8000
@@ -733,12 +734,10 @@ function App() {
         )}
 
 
-        {activeTab === 'calendar' && (
-          <div className="bg-white rounded-xl p-8 shadow-sm border border-gray-100 text-center">
-            <h2 className="text-2xl font-bold text-charcoal mb-4">Calendar</h2>
-            <p className="text-gray-500">Use the Chat tab to interact with calendar</p>
-          </div>
-        )}
+          {activeTab === 'calendar' && (
+            <CalendarView />
+          )}
+
 
         {activeTab === 'meetings' && (
           <MeetingsTab
