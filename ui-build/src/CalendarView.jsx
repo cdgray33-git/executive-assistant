@@ -106,7 +106,7 @@ function CalendarView() {
                                     <span className="font-semibold">Attendees:</span>
                                     <ul className="list-disc list-inside ml-4 mt-1">
                                         {selectedEvent.attendees.map((attendee, idx) => (
-                                            <li key={idx}>{attendee}</li>
+                                            <li key={idx}>{typeof attendee === "object" ? attendee.email || attendee.name : attendee}</li>
                                         ))}
                                     </ul>
                                 </div>
