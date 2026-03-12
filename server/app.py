@@ -941,6 +941,145 @@ async def get_calendar_events(days: int = 30):
         logger.error(f"Error in get_calendar_events: {e}")
         return {"status": "error", "error": str(e), "events": []}
 
+
+# ============================================================================
+# CONTACTS ENDPOINTS
+# ============================================================================
+
+@app.get("/api/contacts")
+async def get_contacts(x_api_key: Optional[str] = Header(None)):
+    """Get all contacts for user"""
+    try:
+        from server.database.connection import get_db_session
+        from sqlalchemy import text
+        
+        # For now, assume user_id = 1 (update when auth is added)
+        user_id = 1
+        
+        with get_db_session() as db:
+            result = db.execute(text("""
+                SELECT id, name, email, phone, notes, created_at, updated_at
+                FROM contacts
+                WHERE user_id = :user_id
+                ORDER BY name
+            """), {'user_id': user_id})
+            
+            contacts = []
+            for row in result:
+                contacts.append({
+                    'id': row.id,
+                    'name': row.name,
+                    'email': row.email,
+                    'phone': row.phone,
+                    'notes': row.notes,
+                    'created_at': str(row.created_at) if row.created_at else None,
+                    'updated_at': str(row.updated_at) if row.updated_at else None
+                })
+            
+            return {"status": "success", "contacts": contacts, "count": len(contacts)}
+            
+    except Exception as e:
+        logger.error(f"Error getting contacts: {e}")
+        return {"status": "error", "error": str(e)}
+
+
+@app.post("/api/contacts")
+async def create_contact(
+    contact: dict,
+    x_api_key: Optional[str] = Header(None)
+):
+    """Create new contact"""
+    try:
+        from server.database.connection import get_db_session
+        from sqlalchemy import text
+        
+        user_id = 1
+        
+        with get_db_session() as db:
+            result = db.execute(text("""
+                INSERT INTO contacts (user_id, name, email, phone, notes)
+                VALUES (:user_id, :name, :email, :phone, :notes)
+                RETURNING id, name, email, phone, notes
+            """), {
+                'user_id': user_id,
+                'name': contact.get('name'),
+                'email': contact.get('email'),
+                'phone': contact.get('phone', ''),
+                'notes': contact.get('notes', '')
+            })
+            db.commit()
+            
+            row = result.fetchone()
+            return {
+                "status": "success",
+                "contact": {
+                    'id': row.id,
+                    'name': row.name,
+                    'email': row.email,
+                    'phone': row.phone,
+                    'notes': row.notes
+                }
+            }
+            
+    except Exception as e:
+        logger.error(f"Error creating contact: {e}")
+        return {"status": "error", "error": str(e)}
+
+
+@app.put("/api/contacts/{contact_id}")
+async def update_contact(
+    contact_id: int,
+    contact: dict,
+    x_api_key: Optional[str] = Header(None)
+):
+    """Update existing contact"""
+    try:
+        from server.database.connection import get_db_session
+        from sqlalchemy import text
+        
+        with get_db_session() as db:
+            db.execute(text("""
+                UPDATE contacts
+                SET name = :name, email = :email, phone = :phone, 
+                    notes = :notes, updated_at = CURRENT_TIMESTAMP
+                WHERE id = :contact_id
+            """), {
+                'contact_id': contact_id,
+                'name': contact.get('name'),
+                'email': contact.get('email'),
+                'phone': contact.get('phone', ''),
+                'notes': contact.get('notes', '')
+            })
+            db.commit()
+            
+            return {"status": "success", "message": "Contact updated"}
+            
+    except Exception as e:
+        logger.error(f"Error updating contact: {e}")
+        return {"status": "error", "error": str(e)}
+
+
+@app.delete("/api/contacts/{contact_id}")
+async def delete_contact(
+    contact_id: int,
+    x_api_key: Optional[str] = Header(None)
+):
+    """Delete contact"""
+    try:
+        from server.database.connection import get_db_session
+        from sqlalchemy import text
+        
+        with get_db_session() as db:
+            db.execute(text("DELETE FROM contacts WHERE id = :contact_id"), 
+                      {'contact_id': contact_id})
+            db.commit()
+            
+            return {"status": "success", "message": "Contact deleted"}
+            
+    except Exception as e:
+        logger.error(f"Error deleting contact: {e}")
+        return {"status": "error", "error": str(e)}
+
 async def get_meeting_responses(
     meeting_id: int,
     x_api_key: Optional[str] = Header(None)

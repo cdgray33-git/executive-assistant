@@ -4,6 +4,7 @@ import { Calendar as CalendarIcon, CheckCircle2, XCircle, Clock, AlertCircle } f
 import ChatInterface from './ChatInterface'
 import MeetingsTab from './MeetingsTab'
 import CalendarView from './CalendarView'
+import ContactsTab from './ContactsTab'
 import OrganizeModal from './OrganizeModal'
 import StartOrganizeModal from './StartOrganizeModal'
 const API_BASE = window.location.origin.replace(":5173", ":8000") // Dev: 5173->8000, Prod: 8000->8000

@@ -130,3 +130,19 @@ CREATE TABLE IF NOT EXISTS email_organization_progress (
 CREATE INDEX idx_org_progress_user ON email_organization_progress(user_id);
 CREATE INDEX idx_org_progress_status ON email_organization_progress(status);
 CREATE INDEX idx_org_progress_provider ON email_organization_progress(provider);
+
+-- Contacts table
+CREATE TABLE IF NOT EXISTS contacts (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    phone VARCHAR(50),
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, email)
+);
+
+CREATE INDEX IF NOT EXISTS idx_contacts_user_id ON contacts(user_id);
+CREATE INDEX IF NOT EXISTS idx_contacts_email ON contacts(email);
