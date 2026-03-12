@@ -1080,6 +1080,62 @@ async def delete_contact(
         logger.error(f"Error deleting contact: {e}")
         return {"status": "error", "error": str(e)}
 
+
+@app.post("/api/setup/migrate")
+async def run_migration(x_api_key: Optional[str] = Header(None)):
+    """Run database migrations - creates missing tables"""
+    try:
+        from server.database.connection import get_db_session
+        from sqlalchemy import text
+        
+        migrations = []
+        
+        # Create contacts table if not exists
+        with get_db_session() as db:
+            # Check if contacts table exists
+            result = db.execute(text("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'contacts'
+                )
+            """))
+            table_exists = result.scalar()
+            
+            if not table_exists:
+                db.execute(text("""
+                    CREATE TABLE contacts (
+                        id SERIAL PRIMARY KEY,
+                        user_id INTEGER,
+                        name VARCHAR(255) NOT NULL,
+                        email VARCHAR(255) NOT NULL,
+                        phone VARCHAR(50),
+                        notes TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(user_id, email)
+                    )
+                """))
+                
+                db.execute(text("CREATE INDEX idx_contacts_user_id ON contacts(user_id)"))
+                db.execute(text("CREATE INDEX idx_contacts_email ON contacts(email)"))
+                
+                db.commit()
+                migrations.append("Created contacts table")
+                logger.info("✅ Created contacts table")
+            else:
+                migrations.append("Contacts table already exists")
+        
+        return {
+            "status": "success",
+            "migrations": migrations,
+            "message": "Database migration complete"
+        }
+        
+    except Exception as e:
+        logger.error(f"Migration error: {e}")
+        return {"status": "error", "error": str(e)}
+
+
 async def get_meeting_responses(
     meeting_id: int,
     x_api_key: Optional[str] = Header(None)
