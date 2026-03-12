@@ -587,7 +587,8 @@ function App() {
             { id: 'chat', label: 'Chat', icon: MessageSquare },
             { id: 'email', label: 'Email', icon: Mail },
             { id: 'calendar', label: 'Calendar', icon: Calendar },
-            { id: 'meetings', label: 'Meetings', icon: Users }
+            { id: 'meetings', label: 'Meetings', icon: Users },
+            { id: 'contacts', label: 'Contacts', icon: Users }
           ].map(tab => (
             <button
               key={tab.id}
