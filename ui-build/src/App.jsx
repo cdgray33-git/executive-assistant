@@ -748,6 +748,11 @@ function App() {
             onRefresh={loadMeetings}
           />
         )}
+
+          {activeTab === 'contacts' && (
+            <ContactsTab />
+          )}
+
       </main>
 
         {/* Organization Progress Modal */}
