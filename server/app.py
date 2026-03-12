@@ -904,6 +904,43 @@ async def get_meetings(
 
 
 @app.get("/api/meetings/{meeting_id}/responses")
+
+@app.get("/api/calendar/events")
+async def get_calendar_events(days: int = 30):
+    """
+    Get calendar events for visual calendar display
+    Same as /api/meetings but formatted for react-big-calendar
+    """
+    try:
+        from server.managers.calendar_manager import CalendarManager
+        from datetime import datetime, timedelta
+        
+        calendar_mgr = CalendarManager()
+        
+        # Calculate date range
+        start_date = datetime.now().date()
+        end_date = start_date + timedelta(days=days)
+        
+        # Get events from database
+        result = calendar_mgr.get_events(days=days)
+        
+        if result.get('status') == 'success':
+            return {
+                "status": "success",
+                "events": result.get('events', []),
+                "count": len(result.get('events', [])),
+                "date_range": {
+                    "start": str(start_date),
+                    "end": str(end_date)
+                }
+            }
+        else:
+            return {"status": "error", "error": "Failed to fetch events", "events": []}
+            
+    except Exception as e:
+        logger.error(f"Error in get_calendar_events: {e}")
+        return {"status": "error", "error": str(e), "events": []}
+
 async def get_meeting_responses(
     meeting_id: int,
     x_api_key: Optional[str] = Header(None)
